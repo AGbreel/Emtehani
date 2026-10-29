@@ -1,0 +1,1 @@
+<Solution><Project Path="Emtehani.Domain/Emtehani.Domain.csproj"/><Project Path="Emtehani.Application/Emtehani.Application.csproj"/><Project Path="Emtehani.Infrastructure/Emtehani.Infrastructure.csproj"/><Project Path="Emtehani.API/Emtehani.API.csproj"/><Project Path="Emtehani.Tests/Emtehani.Tests.csproj"/></Solution>

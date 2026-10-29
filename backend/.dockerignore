@@ -1,0 +1,7 @@
+**/bin/
+**/obj/
+.vs/
+.vercel/
+.env*
+**/appsettings.Development.json
+Emtehani.Tests/

@@ -1,0 +1,22 @@
+namespace Emtehani.Application.Contracts;
+
+public record RegisterRequest(string FullName, string Email, string Password, string Role = "Student", string? Stage = null, string? Grade = null);
+public record LoginRequest(string Email, string Password);
+public record AuthResponse(string Token, string FullName, string Email, string Role, DateTime ExpiresAtUtc, string? StudentCode = null, string? Stage = null, string? Grade = null);
+public record EducationProfileRequest(string? Stage, string? Grade);
+public record QuestionInput(string Text, string Type, string[]? Options, string? CorrectAnswer, decimal Points = 1);
+public record ExamCreateRequest(string Title, string? Description, int DurationMinutes, List<QuestionInput> Questions, int MaxAttempts = 1, bool AllowResumeAfterFocusLoss = true, DateTime? ScheduledAtUtc = null, DateTime? AvailableFromUtc = null, DateTime? AvailableUntilUtc = null, string? Stage = null, string? Grade = null);
+public record AnswerInput(Guid QuestionId, string AnswerText);
+public record SubmitRequest(List<AnswerInput> Answers, bool FocusLossDetected = false);
+public record EssayGradeRequest(decimal AwardedPoints, string? Feedback);
+public record ResendVerificationRequest(string Email);
+public record ForgotPasswordRequest(string Email);
+public record ResetPasswordRequest(string Token, string Password);
+public record SubmissionEventRequest(string Type);
+public record ExamStateRequest(string Action);
+public record StudentCodeRequest(string Code);
+public record ExamParticipantView(Guid Id, string StudentName, string Email, string Code, string Status, DateTime? JoinedAtUtc, DateTime? LastSeenAtUtc, DateTime? SubmittedAtUtc, decimal? Score, decimal? MaxScore, int? RemainingSeconds);
+public record ExamParticipantGenerateRequest(Guid[]? StudentIds = null);
+public record TeacherJoinDecisionRequest(string Action);
+public record TeacherStudentExamBanRequest(Guid ExamId);
+public record ExamAvailabilityRequest(DateTime? AvailableFromUtc, DateTime? AvailableUntilUtc);

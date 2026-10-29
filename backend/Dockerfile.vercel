@@ -1,0 +1,19 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY Directory.Build.props ./
+COPY Emtehani.Domain/Emtehani.Domain.csproj Emtehani.Domain/
+COPY Emtehani.Application/Emtehani.Application.csproj Emtehani.Application/
+COPY Emtehani.Infrastructure/Emtehani.Infrastructure.csproj Emtehani.Infrastructure/
+COPY Emtehani.API/Emtehani.API.csproj Emtehani.API/
+RUN dotnet restore Emtehani.API/Emtehani.API.csproj
+COPY . .
+RUN dotnet publish Emtehani.API/Emtehani.API.csproj -c Release -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble
+WORKDIR /app
+COPY --from=build /app/publish ./
+RUN useradd --create-home --uid 10001 appuser
+ENV PORT=8080 DOTNET_EnableDiagnostics=0 ASPNETCORE_ENVIRONMENT=Production HOME=/home/appuser
+USER appuser
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "Emtehani.API.dll"]

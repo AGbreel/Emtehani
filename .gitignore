@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build output
+dist/
+**/dist/
+bin/
+**/bin/
+obj/
+**/obj/
+
+# Environment and secrets
+.env
+.env.*
+run.txt
+secret.txt
+!.env.example
+**/appsettings.Development.json
+
+# IDE and tooling
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.log
+
+# OpenCode local workspace
+.opencode/
+
+# Vercel local project metadata
+.vercel/
+**/.vercel/
+
+# Local agent tooling
+.agents/
+skills-lock.json
+
+# OS files
+Thumbs.db
+.DS_Store
+# Playwright CLI output (may contain credentials)
+.playwright-cli/

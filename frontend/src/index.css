@@ -1,0 +1,237 @@
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+  --app-bg: #f6f7fb;
+  --app-surface: #ffffff;
+  --app-surface-soft: #f8fafc;
+  --app-surface-raised: #ffffff;
+  --app-ink: #0f172a;
+  --app-muted: #475569;
+  --app-subtle: #64748b;
+  --app-line: #e2e8f0;
+  --app-line-strong: #cbd5e1;
+  --app-primary: #4f46e5;
+  --app-primary-strong: #4338ca;
+  --app-primary-soft: #eef2ff;
+  --app-blue: #2563eb;
+  --app-blue-soft: #eff6ff;
+  --app-emerald: #047857;
+  --app-emerald-soft: #ecfdf5;
+  --app-danger: #dc2626;
+  --app-danger-soft: #fef2f2;
+  --app-warning: #b45309;
+  --app-warning-soft: #fffbeb;
+  --app-shadow: 0 24px 60px -36px rgba(15, 23, 42, .32);
+  --app-shadow-soft: 0 12px 30px -24px rgba(15, 23, 42, .28);
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --app-bg: #070b14;
+  --app-surface: #0d1424;
+  --app-surface-soft: #111a2e;
+  --app-surface-raised: #131d31;
+  --app-ink: #e7eefb;
+  --app-muted: #a8b3c7;
+  --app-subtle: #8a97ac;
+  --app-line: #1e293b;
+  --app-line-strong: #334155;
+  --app-primary: #818cf8;
+  --app-primary-strong: #a5b4fc;
+  --app-primary-soft: #1e1b4b;
+  --app-blue: #60a5fa;
+  --app-blue-soft: #172554;
+  --app-emerald: #34d399;
+  --app-emerald-soft: #052e2b;
+  --app-danger: #f87171;
+  --app-danger-soft: #3f1719;
+  --app-warning: #fbbf24;
+  --app-warning-soft: #3b2a0d;
+  --app-shadow: 0 28px 70px -36px rgba(0, 0, 0, .72);
+  --app-shadow-soft: 0 14px 34px -24px rgba(0, 0, 0, .6);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: "Cairo Variable", "Cairo", "Segoe UI", Tahoma, "Noto Sans Arabic", Arial, sans-serif;
+  --font-display: "Readex Pro Variable", "Readex Pro", "Cairo Variable", sans-serif;
+  --color-canvas: var(--app-bg);
+  --color-surface: var(--app-surface);
+  --color-surface-soft: var(--app-surface-soft);
+  --color-surface-raised: var(--app-surface-raised);
+  --color-ink: var(--app-ink);
+  --color-muted: var(--app-muted);
+  --color-subtle: var(--app-subtle);
+  --color-line: var(--app-line);
+  --color-line-strong: var(--app-line-strong);
+  --color-primary: var(--app-primary);
+  --color-primary-strong: var(--app-primary-strong);
+  --color-primary-soft: var(--app-primary-soft);
+  --color-blue: var(--app-blue);
+  --color-blue-soft: var(--app-blue-soft);
+  --color-emerald: var(--app-emerald);
+  --color-emerald-soft: var(--app-emerald-soft);
+  --color-danger: var(--app-danger);
+  --color-danger-soft: var(--app-danger-soft);
+  --color-warning: var(--app-warning);
+  --color-warning-soft: var(--app-warning-soft);
+  --radius-card: 20px;
+  --radius-control: 12px;
+  --shadow-card: var(--app-shadow);
+  --shadow-soft: var(--app-shadow-soft);
+}
+
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+    border-style: solid;
+    border-width: 0;
+    border-color: var(--app-line);
+  }
+
+  html {
+    min-width: 320px;
+    scroll-behavior: smooth;
+    background: var(--app-bg);
+  }
+
+  body {
+    margin: 0;
+    min-width: 320px;
+    background: var(--app-bg);
+    color: var(--app-ink);
+    font-family: var(--font-sans);
+    line-height: 1.75;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button, input, select, textarea {
+    font: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  img, svg {
+    display: block;
+  }
+
+  h1, h2, h3, h4, p {
+    margin: 0;
+  }
+
+  ::selection {
+    background: var(--app-primary);
+    color: #ffffff;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--app-primary);
+    outline-offset: 3px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--app-bg);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--app-line-strong);
+    border: 3px solid var(--app-bg);
+    border-radius: 999px;
+  }
+}
+
+@layer components {
+  .ui-scrollbar-hidden {
+    scrollbar-width: none;
+  }
+
+  .ui-scrollbar-hidden::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ui-grid-bg {
+    background-image:
+      linear-gradient(to right, color-mix(in srgb, var(--app-line) 48%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, var(--app-line) 48%, transparent) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+
+  .ui-dots {
+    background-image: radial-gradient(color-mix(in srgb, var(--app-line-strong) 58%, transparent) 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
+
+  .ui-glass {
+    background: color-mix(in srgb, var(--app-surface) 84%, transparent);
+    backdrop-filter: blur(18px);
+  }
+
+  .ui-shimmer {
+    background: linear-gradient(100deg,
+      color-mix(in srgb, var(--app-line) 72%, transparent) 20%,
+      color-mix(in srgb, var(--app-surface) 88%, transparent) 45%,
+      color-mix(in srgb, var(--app-line) 72%, transparent) 70%);
+    background-size: 220% 100%;
+    animation: ui-shimmer 1.6s linear infinite;
+  }
+
+  .ui-number {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.03em;
+  }
+
+  .ui-ltr {
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  .ui-safe-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}
+
+@keyframes ui-shimmer {
+  to { background-position: -220% 0; }
+}
+
+@keyframes ui-pulse-ring {
+  0% { transform: scale(.86); opacity: .65; }
+  70% { transform: scale(1.45); opacity: 0; }
+  100% { transform: scale(1.45); opacity: 0; }
+}
+
+@keyframes ui-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

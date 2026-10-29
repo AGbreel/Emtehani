@@ -1,0 +1,8 @@
+.vercel/
+.env.local
+.env.*
+**/bin/
+**/obj/
+Emtehani.Tests/
+.vs/
+*.user
