@@ -1,4 +1,4 @@
-export const EDUCATION_STAGES = ['ابتدائي', 'إعدادي', 'ثانوي'];
+export const EDUCATION_STAGES = ["ابتدائي", "إعدادي", "ثانوي", "بكالوريا"];
 
 export const GRADES_BY_STAGE = {
   ابتدائي: [
@@ -23,5 +23,7 @@ export function gradesForStage(stage) {
 }
 
 export function isValidEducation(stage, grade) {
-  return EDUCATION_STAGES.includes(stage) && gradesForStage(stage).includes(grade);
+  return (
+    EDUCATION_STAGES.includes(stage) && gradesForStage(stage).includes(grade)
+  );
 }
