@@ -70,10 +70,10 @@ function InviteStat({ value, suffix, label }) {
 function LivePreview() {
   const reduce = useReducedMotion();
   const rows = [
-    { name: 'سارة أحمد', code: '482913', time: '04:12', status: 'Active' },
-    { name: 'محمد العتيبي', code: '718204', time: '03:48', status: 'Active' },
-    { name: 'ليان خالد', code: '650127', time: '02:55', status: 'Submitted' },
-    { name: 'عمر الشمري', code: '913406', time: '--:--', status: 'Waiting' },
+    { name: "احمد جبريل", code: "482913", time: "04:12", status: "Active" },
+    { name: "محمد العتيبي", code: "718204", time: "03:48", status: "Active" },
+    { name: "ليان خالد", code: "650127", time: "02:55", status: "Submitted" },
+    { name: "عمر الشمري", code: "913406", time: "--:--", status: "Waiting" },
   ];
   return (
     <div className="relative mx-auto w-full max-w-[560px]">
@@ -206,37 +206,114 @@ export default function LandingPage({ onLogin, onRegister, theme, onToggleTheme,
 
   return (
     <div className="min-h-dvh overflow-x-clip bg-canvas text-ink">
-      <header className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${scrolled || menuOpen ? 'border-b border-line bg-surface/90 backdrop-blur-xl' : 'bg-transparent'}`}>
+      <header
+        className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${scrolled || menuOpen ? "border-b border-line bg-surface/90 backdrop-blur-xl" : "bg-transparent"}`}
+      >
         <div className="mx-auto flex h-[72px] max-w-[1240px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-          <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} aria-label="العودة إلى الأعلى"><Logo /></button>
-          <nav className="hidden items-center gap-1 md:flex" aria-label="التنقل الرئيسي">
+          <button
+            type="button"
+            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            aria-label="العودة إلى الأعلى"
+          >
+            <Logo />
+          </button>
+          <nav
+            className="hidden items-center gap-1 md:flex"
+            aria-label="التنقل الرئيسي"
+          >
             {navLinks.map((link) => (
-              <a key={link.href} href={link.href} className="rounded-[9px] px-3 py-2 text-[12.5px] font-semibold text-muted transition hover:bg-surface-soft hover:text-ink">{link.label}</a>
+              <a
+                key={link.href}
+                href={link.href}
+                className="rounded-[9px] px-3 py-2 text-[12.5px] font-semibold text-muted transition hover:bg-surface-soft hover:text-ink"
+              >
+                {link.label}
+              </a>
             ))}
           </nav>
           <div className="flex items-center gap-1.5">
-            <button type="button" onClick={onToggleTheme} aria-label={theme === 'dark' ? 'الوضع الفاتح' : 'الوضع الداكن'} className="grid size-9 place-items-center rounded-[10px] border border-line bg-surface text-muted transition hover:text-ink">
-              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              aria-label={theme === "dark" ? "الوضع الفاتح" : "الوضع الداكن"}
+              className="grid size-9 place-items-center rounded-[10px] border border-line bg-surface text-muted transition hover:text-ink"
+            >
+              {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
             </button>
-            <button type="button" onClick={onLogin} className="hidden h-9 items-center rounded-[10px] px-3 text-[12px] font-bold text-muted transition hover:bg-surface-soft hover:text-ink sm:inline-flex">تسجيل الدخول</button>
-            <Button size="sm" onClick={onRegister} className="hidden sm:inline-flex">ابدأ مجاناً</Button>
-            <button type="button" onClick={() => setMenuOpen((v) => !v)} aria-expanded={menuOpen} aria-label={menuOpen ? 'إغلاق القائمة' : 'فتح القائمة'} className="grid size-9 place-items-center rounded-[10px] border border-line bg-surface text-ink md:hidden">
+            <button
+              type="button"
+              onClick={onLogin}
+              className="hidden h-9 items-center rounded-[10px] px-3 text-[12px] font-bold text-muted transition hover:bg-surface-soft hover:text-ink sm:inline-flex"
+            >
+              تسجيل الدخول
+            </button>
+            <Button
+              size="sm"
+              onClick={onRegister}
+              className="hidden sm:inline-flex"
+            >
+              ابدأ مجاناً
+            </Button>
+            <button
+              type="button"
+              onClick={() => setMenuOpen((v) => !v)}
+              aria-expanded={menuOpen}
+              aria-label={menuOpen ? "إغلاق القائمة" : "فتح القائمة"}
+              className="grid size-9 place-items-center rounded-[10px] border border-line bg-surface text-ink md:hidden"
+            >
               {menuOpen ? <X size={17} /> : <Menu size={17} />}
             </button>
           </div>
         </div>
         <AnimatePresence>
           {menuOpen ? (
-            <motion.div className="border-t border-line bg-surface px-4 py-4 md:hidden" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
+            <motion.div
+              className="border-t border-line bg-surface px-4 py-4 md:hidden"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+            >
               <nav className="grid gap-1">
                 {navLinks.map((link) => (
-                  <a key={link.href} href={link.href} onClick={() => setMenuOpen(false)} className="rounded-[10px] px-3 py-2.5 text-sm font-semibold text-muted hover:bg-surface-soft hover:text-ink">{link.label}</a>
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    onClick={() => setMenuOpen(false)}
+                    className="rounded-[10px] px-3 py-2.5 text-sm font-semibold text-muted hover:bg-surface-soft hover:text-ink"
+                  >
+                    {link.label}
+                  </a>
                 ))}
-                <button type="button" onClick={() => { setMenuOpen(false); onOpenPortfolio(); }} className="flex items-center gap-2 rounded-[10px] px-3 py-2.5 text-right text-sm font-semibold text-muted hover:bg-surface-soft"><ExternalLink size={15} />ملف المطور</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenPortfolio();
+                  }}
+                  className="flex items-center gap-2 rounded-[10px] px-3 py-2.5 text-right text-sm font-semibold text-muted hover:bg-surface-soft"
+                >
+                  <ExternalLink size={15} />
+                  ملف المطور
+                </button>
               </nav>
               <div className="mt-3 grid grid-cols-2 gap-2 border-t border-line pt-3">
-                <Button variant="secondary" onClick={() => { setMenuOpen(false); onLogin(); }}>تسجيل الدخول</Button>
-                <Button onClick={() => { setMenuOpen(false); onRegister(); }}>ابدأ مجاناً</Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onLogin();
+                  }}
+                >
+                  تسجيل الدخول
+                </Button>
+                <Button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onRegister();
+                  }}
+                >
+                  ابدأ مجاناً
+                </Button>
               </div>
             </motion.div>
           ) : null}
@@ -251,46 +328,123 @@ export default function LandingPage({ onLogin, onRegister, theme, onToggleTheme,
 
           <div className="mx-auto grid max-w-[1240px] items-center gap-12 px-4 sm:px-6 lg:grid-cols-[1.02fr_.98fr] lg:gap-10 lg:px-8">
             <div className="text-center lg:text-right">
-              <motion.div variants={fadeUp} initial="hidden" animate="show" custom={0.05} className="mb-5 inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1.5 text-[10.5px] font-bold text-muted shadow-sm">
-                <span className="grid size-5 place-items-center rounded-full bg-emerald-soft text-emerald"><Sparkles size={11} /></span>
+              <motion.div
+                variants={fadeUp}
+                initial="hidden"
+                animate="show"
+                custom={0.05}
+                className="mb-5 inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1.5 text-[10.5px] font-bold text-muted shadow-sm"
+              >
+                <span className="grid size-5 place-items-center rounded-full bg-emerald-soft text-emerald">
+                  <Sparkles size={11} />
+                </span>
                 منصة امتحانات عربية صُممت للفصل الحديث
               </motion.div>
 
-              <motion.h1 variants={fadeUp} initial="hidden" animate="show" custom={0.1} className="mx-auto max-w-[650px] font-display text-[clamp(2.35rem,5.5vw,4.25rem)] font-semibold leading-[1.18] tracking-[-0.055em] text-ink lg:mx-0">
+              <motion.h1
+                variants={fadeUp}
+                initial="hidden"
+                animate="show"
+                custom={0.1}
+                className="mx-auto max-w-[650px] font-display text-[clamp(2.35rem,5.5vw,4.25rem)] font-semibold leading-[1.18] tracking-[-0.055em] text-ink lg:mx-0"
+              >
                 امتحانات أونلاين
                 <span className="relative mx-1.5 inline-block text-primary">
                   بتحكّم كامل
-                  <svg className="absolute -bottom-1.5 right-0 h-2.5 w-full text-primary/30" viewBox="0 0 200 12" fill="none" aria-hidden="true"><path d="M2 9C50 2 130 1 198 7" stroke="currentColor" strokeWidth="5" strokeLinecap="round" /></svg>
+                  <svg
+                    className="absolute -bottom-1.5 right-0 h-2.5 w-full text-primary/30"
+                    viewBox="0 0 200 12"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M2 9C50 2 130 1 198 7"
+                      stroke="currentColor"
+                      strokeWidth="5"
+                      strokeLinecap="round"
+                    />
+                  </svg>
                 </span>
                 من أول دقيقة.
               </motion.h1>
 
-              <motion.p variants={fadeUp} initial="hidden" animate="show" custom={0.18} className="mx-auto mt-5 max-w-[540px] text-[13.5px] leading-8 text-muted sm:text-[15px] lg:mx-0">
-                أنشئ الامتحان، وحدّد مرحلته وصفه، افتح الجلسة، وتابع كل محاولة لحظة بلحظة. واجهة عربية واحدة، بدون تعقيد.
+              <motion.p
+                variants={fadeUp}
+                initial="hidden"
+                animate="show"
+                custom={0.18}
+                className="mx-auto mt-5 max-w-[540px] text-[13.5px] leading-8 text-muted sm:text-[15px] lg:mx-0"
+              >
+                أنشئ الامتحان، وحدّد مرحلته وصفه، افتح الجلسة، وتابع كل محاولة
+                لحظة بلحظة. واجهة عربية واحدة، بدون تعقيد.
               </motion.p>
 
-              <motion.div variants={fadeUp} initial="hidden" animate="show" custom={0.26} className="mt-7 flex flex-col items-center justify-center gap-2.5 sm:flex-row lg:justify-start">
-                <Button size="lg" onClick={onRegister} iconEnd={ArrowLeft} className="w-full sm:w-auto">ابدأ مجاناً</Button>
-                <a href="#workflow" className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[14px] border border-line bg-surface px-6 text-sm font-bold text-ink shadow-soft transition hover:border-line-strong hover:bg-surface-soft sm:w-auto">
-                  <span className="grid size-6 place-items-center rounded-full bg-primary-soft text-primary"><Play size={10} fill="currentColor" /></span>
+              <motion.div
+                variants={fadeUp}
+                initial="hidden"
+                animate="show"
+                custom={0.26}
+                className="mt-7 flex flex-col items-center justify-center gap-2.5 sm:flex-row lg:justify-start"
+              >
+                <Button
+                  size="lg"
+                  onClick={onRegister}
+                  iconEnd={ArrowLeft}
+                  className="w-full sm:w-auto"
+                >
+                  ابدأ مجاناً
+                </Button>
+                <a
+                  href="#workflow"
+                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-[14px] border border-line bg-surface px-6 text-sm font-bold text-ink shadow-soft transition hover:border-line-strong hover:bg-surface-soft sm:w-auto"
+                >
+                  <span className="grid size-6 place-items-center rounded-full bg-primary-soft text-primary">
+                    <Play size={10} fill="currentColor" />
+                  </span>
                   شاهد كيف يعمل
                 </a>
               </motion.div>
 
-              <motion.div variants={fadeUp} initial="hidden" animate="show" custom={0.34} className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11px] font-semibold text-subtle lg:justify-start">
-                {['بدون تثبيت', 'واجهة RTL أصلية', 'تصحيح تلقائي', 'تصدير CSV'].map((item) => (
-                  <span key={item} className="inline-flex items-center gap-1.5"><CheckCircle2 size={12} className="text-emerald" />{item}</span>
+              <motion.div
+                variants={fadeUp}
+                initial="hidden"
+                animate="show"
+                custom={0.34}
+                className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11px] font-semibold text-subtle lg:justify-start"
+              >
+                {[
+                  "بدون تثبيت",
+                  "واجهة RTL أصلية",
+                  "تصحيح تلقائي",
+                  "تصدير CSV",
+                ].map((item) => (
+                  <span key={item} className="inline-flex items-center gap-1.5">
+                    <CheckCircle2 size={12} className="text-emerald" />
+                    {item}
+                  </span>
                 ))}
               </motion.div>
             </div>
 
-            <div className="relative mt-2 lg:mt-0"><LivePreview /></div>
+            <div className="relative mt-2 lg:mt-0">
+              <LivePreview />
+            </div>
           </div>
 
-          <motion.div initial={reduce ? false : { opacity: 0, y: 18 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: '-40px' }} transition={{ duration: 0.55 }} className="mx-auto mt-16 max-w-[1100px] px-4 sm:px-6 lg:mt-20 lg:px-8">
+          <motion.div
+            initial={reduce ? false : { opacity: 0, y: 18 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-40px" }}
+            transition={{ duration: 0.55 }}
+            className="mx-auto mt-16 max-w-[1100px] px-4 sm:px-6 lg:mt-20 lg:px-8"
+          >
             <div className="grid grid-cols-2 gap-6 rounded-[22px] border border-line bg-surface/80 px-5 py-6 shadow-soft backdrop-blur-sm sm:grid-cols-4 sm:px-8">
               <InviteStat value={6} label="أنواع أسئلة جاهزة" />
-              <InviteStat value={3} suffix=" ثوانٍ" label="تحديث لوحة المتابعة" />
+              <InviteStat
+                value={3}
+                suffix=" ثوانٍ"
+                label="تحديث لوحة المتابعة"
+              />
               <InviteStat value="100%" label="واجهة عربية RTL" />
               <InviteStat value="CSV" label="تصدير النتائج والحضور" />
             </div>
@@ -299,79 +453,186 @@ export default function LandingPage({ onLogin, onRegister, theme, onToggleTheme,
 
         <section id="features" className="scroll-mt-24 py-16 sm:py-20">
           <div className="mx-auto max-w-[1240px] px-4 sm:px-6 lg:px-8">
-            <SectionHeading eyebrow="كل ما تحتاجه" title="من إنشاء الامتحان إلى آخر نتيجة." description="أدوات مترابطة تقلّل العمل اليدوي وتمنحك صورة واضحة عن الجلسة، بدون تبديل بين عشر أدوات." />
+            <SectionHeading
+              eyebrow="كل ما تحتاجه"
+              title="من إنشاء الامتحان إلى آخر نتيجة."
+              description="أدوات مترابطة تقلّل العمل اليدوي وتمنحك صورة واضحة عن الجلسة، بدون تبديل بين عشر أدوات."
+            />
 
             <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <FeatureCard icon={GraduationCap} title="ظهور حسب المرحلة والصف" description="لا روابط ولا أكواد يدوية. يرى الطالب امتحانات مدرسيه المطابقة لمرحلته وصفه فقط، ويبدأها من حسابه مباشرة." className="sm:col-span-2 lg:col-span-1" tone="primary">
+              <FeatureCard
+                icon={GraduationCap}
+                title="ظهور حسب المرحلة والصف"
+                description="لا روابط ولا أكواد يدوية. يرى الطالب امتحانات مدرسيه المطابقة لمرحلته وصفه فقط، ويبدأها من حسابه مباشرة."
+                className="sm:col-span-2 lg:col-span-1"
+                tone="primary"
+              >
                 <div className="mt-5 rounded-[13px] border border-line bg-surface-soft p-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-[9px] font-bold text-muted">المرحلة والصف</span>
-                    <Badge tone="emerald" dot>مرتب بالحساب</Badge>
+                    <span className="text-[9px] font-bold text-muted">
+                      المرحلة والصف
+                    </span>
+                    <Badge tone="emerald" dot>
+                      مرتب بالحساب
+                    </Badge>
                   </div>
                   <div className="mt-2 flex items-center justify-between gap-3">
-                    <strong className="text-[13px] font-bold text-ink">ثانوي · الثالث الثانوي</strong>
-                    <span className="text-[9px] text-subtle">سارة أحمد</span>
+                    <strong className="text-[13px] font-bold text-ink">
+                      ثانوي · الثالث الثانوي
+                    </strong>
+                    <span className="text-[9px] text-subtle">احمد جبريل</span>
                   </div>
                 </div>
               </FeatureCard>
 
-              <FeatureCard icon={Radio} title="غرفة انتظار منظّمة" description="يدخل الطلاب ويظهرون للمدرس قبل بدء الامتحان. لا يبدأ الوقت قبل أن تفتح الجلسة بنفسك." tone="emerald">
+              <FeatureCard
+                icon={Radio}
+                title="غرفة انتظار منظّمة"
+                description="يدخل الطلاب ويظهرون للمدرس قبل بدء الامتحان. لا يبدأ الوقت قبل أن تفتح الجلسة بنفسك."
+                tone="emerald"
+              >
                 <div className="mt-5 flex items-center gap-2 rounded-[12px] bg-emerald-soft px-3 py-2.5 text-[9.5px] font-semibold text-emerald">
-                  <span className="relative flex size-2"><span className="absolute size-full animate-ping rounded-full bg-emerald opacity-60" /><span className="relative size-2 rounded-full bg-emerald" /></span>
+                  <span className="relative flex size-2">
+                    <span className="absolute size-full animate-ping rounded-full bg-emerald opacity-60" />
+                    <span className="relative size-2 rounded-full bg-emerald" />
+                  </span>
                   18 طالباً في غرفة الانتظار
                 </div>
               </FeatureCard>
 
-              <FeatureCard icon={Zap} title="تحكّم فوري بالجلسة" description="افتح، أوقف مؤقتاً، استأنف، أو أنهِ الامتحان. الوقت الإضافي يُحسب تلقائياً عند الاستئناف." tone="warning">
+              <FeatureCard
+                icon={Zap}
+                title="تحكّم فوري بالجلسة"
+                description="افتح، أوقف مؤقتاً، استأنف، أو أنهِ الامتحان. الوقت الإضافي يُحسب تلقائياً عند الاستئناف."
+                tone="warning"
+              >
                 <div className="mt-5 flex flex-wrap gap-1.5">
-                  {['فتح', 'إيقاف', 'استئناف', 'إنهاء'].map((label, index) => (
-                    <span key={label} className={`rounded-[7px] px-2 py-1 text-[8.5px] font-bold ${index === 0 ? 'bg-primary text-white' : 'border border-line bg-surface text-muted'}`}>{label}</span>
+                  {["فتح", "إيقاف", "استئناف", "إنهاء"].map((label, index) => (
+                    <span
+                      key={label}
+                      className={`rounded-[7px] px-2 py-1 text-[8.5px] font-bold ${index === 0 ? "bg-primary text-white" : "border border-line bg-surface text-muted"}`}
+                    >
+                      {label}
+                    </span>
                   ))}
                 </div>
               </FeatureCard>
 
-              <FeatureCard icon={BarChart3} title="متابعة مباشرة" description="اعرف من بدأ، من سلّم، من انقطع، ومن ما زال في غرفة الانتظار، مع تحديث تلقائي كل 3 ثوانٍ." tone="blue">
+              <FeatureCard
+                icon={BarChart3}
+                title="متابعة مباشرة"
+                description="اعرف من بدأ، من سلّم، من انقطع، ومن ما زال في غرفة الانتظار، مع تحديث تلقائي كل 3 ثوانٍ."
+                tone="blue"
+              >
                 <div className="mt-5 grid grid-cols-3 gap-1.5">
-                  {[['18', 'نشط'], ['12', 'سلّم'], ['06', 'ينتظر']].map(([v, l]) => (
-                    <div key={l} className="rounded-[10px] border border-line bg-surface-soft p-2 text-center"><strong className="ui-number block text-sm text-ink">{v}</strong><span className="text-[8px] text-muted">{l}</span></div>
+                  {[
+                    ["18", "نشط"],
+                    ["12", "سلّم"],
+                    ["06", "ينتظر"],
+                  ].map(([v, l]) => (
+                    <div
+                      key={l}
+                      className="rounded-[10px] border border-line bg-surface-soft p-2 text-center"
+                    >
+                      <strong className="ui-number block text-sm text-ink">
+                        {v}
+                      </strong>
+                      <span className="text-[8px] text-muted">{l}</span>
+                    </div>
                   ))}
                 </div>
               </FeatureCard>
 
-              <FeatureCard icon={Download} title="نتائج قابلة للمشاركة" description="صدّر النتائج بصيغة CSV، أو راجع إجابات المقالات يدوياً من شاشة واحدة." tone="emerald">
+              <FeatureCard
+                icon={Download}
+                title="نتائج قابلة للمشاركة"
+                description="صدّر النتائج بصيغة CSV، أو راجع إجابات المقالات يدوياً من شاشة واحدة."
+                tone="emerald"
+              >
                 <div className="mt-5 flex items-center justify-between rounded-[12px] border border-line bg-surface-soft px-3 py-2">
-                  <span className="ui-ltr text-[9px] text-muted">results_math.csv</span>
-                  <span className="grid size-6 place-items-center rounded-full bg-emerald-soft text-emerald"><Download size={12} /></span>
+                  <span className="ui-ltr text-[9px] text-muted">
+                    results_math.csv
+                  </span>
+                  <span className="grid size-6 place-items-center rounded-full bg-emerald-soft text-emerald">
+                    <Download size={12} />
+                  </span>
                 </div>
               </FeatureCard>
 
-              <FeatureCard icon={ShieldCheck} title="عدالة أكبر في التصحيح" description="تصحيح تلقائي فوري للاختيار من متعدد والصواب والخطأ، وقائمة منفصلة للمراجعة اليدوية." tone="primary">
+              <FeatureCard
+                icon={ShieldCheck}
+                title="عدالة أكبر في التصحيح"
+                description="تصحيح تلقائي فوري للاختيار من متعدد والصواب والخطأ، وقائمة منفصلة للمراجعة اليدوية."
+                tone="primary"
+              >
                 <div className="mt-5 flex items-center justify-between rounded-[12px] border border-line bg-surface-soft px-3 py-2.5">
-                  <span className="text-[9.5px] font-semibold text-muted">الدرجة النهائية</span>
-                  <span className="ui-number rounded-[7px] bg-primary-soft px-2 py-1 text-[12px] font-bold text-primary">48 / 50</span>
+                  <span className="text-[9.5px] font-semibold text-muted">
+                    الدرجة النهائية
+                  </span>
+                  <span className="ui-number rounded-[7px] bg-primary-soft px-2 py-1 text-[12px] font-bold text-primary">
+                    48 / 50
+                  </span>
                 </div>
               </FeatureCard>
             </div>
           </div>
         </section>
 
-        <section id="workflow" className="scroll-mt-24 border-y border-line bg-surface-soft/55 py-16 sm:py-20">
+        <section
+          id="workflow"
+          className="scroll-mt-24 border-y border-line bg-surface-soft/55 py-16 sm:py-20"
+        >
           <div className="mx-auto max-w-[1240px] px-4 sm:px-6 lg:px-8">
-            <SectionHeading eyebrow="ثلاث خطوات" title="من الفكرة إلى الجلسة المباشرة." description="لا تحتاج إعداداً طويلاً. أنشئ الامتحان، وانشره وافتح الجلسة عندما تكون جاهزاً." align="center" />
+            <SectionHeading
+              eyebrow="ثلاث خطوات"
+              title="من الفكرة إلى الجلسة المباشرة."
+              description="لا تحتاج إعداداً طويلاً. أنشئ الامتحان، وانشره وافتح الجلسة عندما تكون جاهزاً."
+              align="center"
+            />
             <div className="relative mt-10 grid gap-4 md:grid-cols-3">
               <div className="absolute inset-x-[16%] top-8 hidden h-px bg-line md:block" />
               {[
-                { step: '01', icon: FileQuestion, title: 'أنشئ الامتحان', text: 'أضف الأسئلة والدرجات والمدة، وحدّد موعد الجلسة إن أردت.' },
-                { step: '02', icon: GraduationCap, title: 'مرحلة وصف دقيقان', text: 'حدّد المرحلة والصف عند إنشاء الامتحان، ولن يظهر إلا للطلاب المؤهلين المسجلين لديك.' },
-                { step: '03', icon: Radio, title: 'افتح وتابع', text: 'افتح الجلسة، راقب الحضور والتسليم، وتحكّم بالوقت من لوحة واحدة.' },
+                {
+                  step: "01",
+                  icon: FileQuestion,
+                  title: "أنشئ الامتحان",
+                  text: "أضف الأسئلة والدرجات والمدة، وحدّد موعد الجلسة إن أردت.",
+                },
+                {
+                  step: "02",
+                  icon: GraduationCap,
+                  title: "مرحلة وصف دقيقان",
+                  text: "حدّد المرحلة والصف عند إنشاء الامتحان، ولن يظهر إلا للطلاب المؤهلين المسجلين لديك.",
+                },
+                {
+                  step: "03",
+                  icon: Radio,
+                  title: "افتح وتابع",
+                  text: "افتح الجلسة، راقب الحضور والتسليم، وتحكّم بالوقت من لوحة واحدة.",
+                },
               ].map((item) => (
-                <motion.div key={item.step} initial={reduce ? false : { opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.45 }} className="relative rounded-card border border-line bg-surface p-5 shadow-soft">
+                <motion.div
+                  key={item.step}
+                  initial={reduce ? false : { opacity: 0, y: 16 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.45 }}
+                  className="relative rounded-card border border-line bg-surface p-5 shadow-soft"
+                >
                   <div className="flex items-center justify-between">
-                    <span className="grid size-11 place-items-center rounded-[14px] bg-primary text-white shadow-[0_12px_24px_-14px_var(--app-primary)]"><item.icon size={20} /></span>
-                    <span className="ui-number font-display text-2xl font-semibold text-line-strong">{item.step}</span>
+                    <span className="grid size-11 place-items-center rounded-[14px] bg-primary text-white shadow-[0_12px_24px_-14px_var(--app-primary)]">
+                      <item.icon size={20} />
+                    </span>
+                    <span className="ui-number font-display text-2xl font-semibold text-line-strong">
+                      {item.step}
+                    </span>
                   </div>
-                  <h3 className="mt-4 font-display text-[15px] font-semibold text-ink">{item.title}</h3>
-                  <p className="mt-1.5 text-[13px] leading-6 text-muted">{item.text}</p>
+                  <h3 className="mt-4 font-display text-[15px] font-semibold text-ink">
+                    {item.title}
+                  </h3>
+                  <p className="mt-1.5 text-[13px] leading-6 text-muted">
+                    {item.text}
+                  </p>
                 </motion.div>
               ))}
             </div>
@@ -381,24 +642,56 @@ export default function LandingPage({ onLogin, onRegister, theme, onToggleTheme,
         <section id="faq" className="scroll-mt-24 pb-16 sm:pb-20">
           <div className="mx-auto grid max-w-[1240px] gap-6 px-4 sm:px-6 lg:grid-cols-[.8fr_1.2fr] lg:gap-12 lg:px-8">
             <div>
-              <span className="mb-2.5 inline-flex items-center gap-2 text-[11px] font-extrabold tracking-[0.14em] text-primary"><Sparkles size={13} />أسئلة سريعة</span>
-              <h2 className="font-display text-[clamp(1.55rem,3vw,2.25rem)] font-semibold leading-[1.3] tracking-[-0.04em]">قبل أن تبدأ، هذه الإجابات.</h2>
-              <p className="mt-2 text-[13.5px] leading-7 text-muted">لو احتجت تفاصيل أكثر، تواصل مباشرة مع فريق التطوير.</p>
-              <a href="mailto:ahmedgbreel47@gmail.com" className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-[11px] border border-line bg-surface px-3.5 py-2.5 text-[12px] font-bold text-ink shadow-soft transition hover:border-primary/40 hover:text-primary"><Mail size={14} />راسلنا</a>
+              <span className="mb-2.5 inline-flex items-center gap-2 text-[11px] font-extrabold tracking-[0.14em] text-primary">
+                <Sparkles size={13} />
+                أسئلة سريعة
+              </span>
+              <h2 className="font-display text-[clamp(1.55rem,3vw,2.25rem)] font-semibold leading-[1.3] tracking-[-0.04em]">
+                قبل أن تبدأ، هذه الإجابات.
+              </h2>
+              <p className="mt-2 text-[13.5px] leading-7 text-muted">
+                لو احتجت تفاصيل أكثر، تواصل مباشرة مع فريق التطوير.
+              </p>
+              <a
+                href="mailto:ahmedgbreel47@gmail.com"
+                className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-[11px] border border-line bg-surface px-3.5 py-2.5 text-[12px] font-bold text-ink shadow-soft transition hover:border-primary/40 hover:text-primary"
+              >
+                <Mail size={14} />
+                راسلنا
+              </a>
             </div>
             <div className="grid gap-2.5">
               {[
-                ['هل أحتاج تثبيت أي برنامج؟', 'لا. المنصة تعمل من المتصفح على الكمبيوتر أو الجوال. سجّل الدخول وابدأ.'],
-                ['كيف يدخل الطالب الامتحان؟', 'بعد تسجيل الدخول تظهر للطالب امتحانات مدرسيه المطابقة لمرحلته وصفه. يختار الامتحان ليبدأ أو يستكمل محاولته مباشرة دون الحاجة إلى كود.'],
-                ['هل يمكن إيقاف الامتحان مؤقتاً؟', 'نعم. عند الإيقاف يتوقف الوقت، وعند الاستئناف يُضاف زمن التوقف تلقائياً إلى وقت الطلاب.'],
-                ['هل تصحح الأسئلة المقالية تلقائياً؟', 'الاختيار من متعدد والصواب والخطأ تُصحح تلقائياً. المقالات تظهر في قائمة مراجعة يدوية للمدرس.'],
+                [
+                  "هل أحتاج تثبيت أي برنامج؟",
+                  "لا. المنصة تعمل من المتصفح على الكمبيوتر أو الجوال. سجّل الدخول وابدأ.",
+                ],
+                [
+                  "كيف يدخل الطالب الامتحان؟",
+                  "بعد تسجيل الدخول تظهر للطالب امتحانات مدرسيه المطابقة لمرحلته وصفه. يختار الامتحان ليبدأ أو يستكمل محاولته مباشرة دون الحاجة إلى كود.",
+                ],
+                [
+                  "هل يمكن إيقاف الامتحان مؤقتاً؟",
+                  "نعم. عند الإيقاف يتوقف الوقت، وعند الاستئناف يُضاف زمن التوقف تلقائياً إلى وقت الطلاب.",
+                ],
+                [
+                  "هل تصحح الأسئلة المقالية تلقائياً؟",
+                  "الاختيار من متعدد والصواب والخطأ تُصحح تلقائياً. المقالات تظهر في قائمة مراجعة يدوية للمدرس.",
+                ],
               ].map(([question, answer]) => (
-                <details key={question} className="group rounded-[14px] border border-line bg-surface px-4 py-3.5 shadow-soft open:border-primary/25">
+                <details
+                  key={question}
+                  className="group rounded-[14px] border border-line bg-surface px-4 py-3.5 shadow-soft open:border-primary/25"
+                >
                   <summary className="flex min-h-8 cursor-pointer list-none items-center justify-between gap-3 text-[14px] font-bold text-ink">
                     {question}
-                    <span className="grid size-6 shrink-0 place-items-center rounded-full bg-surface-soft text-muted transition group-open:rotate-45 group-open:bg-primary-soft group-open:text-primary"><span className="text-base leading-none">+</span></span>
+                    <span className="grid size-6 shrink-0 place-items-center rounded-full bg-surface-soft text-muted transition group-open:rotate-45 group-open:bg-primary-soft group-open:text-primary">
+                      <span className="text-base leading-none">+</span>
+                    </span>
                   </summary>
-                  <p className="mt-2.5 border-t border-line pt-3 text-[13px] leading-7 text-muted">{answer}</p>
+                  <p className="mt-2.5 border-t border-line pt-3 text-[13px] leading-7 text-muted">
+                    {answer}
+                  </p>
                 </details>
               ))}
             </div>
@@ -412,13 +705,33 @@ export default function LandingPage({ onLogin, onRegister, theme, onToggleTheme,
               <div className="pointer-events-none absolute -bottom-32 right-1/3 size-64 rounded-full bg-emerald/15 blur-[80px]" />
               <div className="relative grid items-center gap-6 lg:grid-cols-[1fr_auto]">
                 <div className="max-w-xl">
-                  <Badge tone="primary" className="bg-white/10 text-white">ابدأ اليوم</Badge>
-                  <h2 className="mt-4 font-display text-[clamp(1.7rem,3.4vw,2.6rem)] font-semibold leading-[1.3] tracking-[-0.04em]">جاهز تفتح أول جلسة امتحان؟</h2>
-                  <p className="mt-2 max-w-lg text-[13.5px] leading-7 text-white/75">أنشئ حسابك، ابنِ الامتحان الأول، وجرّب غرفة الانتظار مع طلابك. البداية لا تحتاج أكثر من دقائق.</p>
+                  <Badge tone="primary" className="bg-white/10 text-white">
+                    ابدأ اليوم
+                  </Badge>
+                  <h2 className="mt-4 font-display text-[clamp(1.7rem,3.4vw,2.6rem)] font-semibold leading-[1.3] tracking-[-0.04em]">
+                    جاهز تفتح أول جلسة امتحان؟
+                  </h2>
+                  <p className="mt-2 max-w-lg text-[13.5px] leading-7 text-white/75">
+                    أنشئ حسابك، ابنِ الامتحان الأول، وجرّب غرفة الانتظار مع
+                    طلابك. البداية لا تحتاج أكثر من دقائق.
+                  </p>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
-                  <Button size="lg" onClick={onRegister} iconEnd={ArrowLeft} className="!bg-white !text-[#10172e] shadow-none hover:!bg-white/90">ابدأ مجاناً</Button>
-                  <button type="button" onClick={onLogin} className="inline-flex h-12 items-center justify-center gap-2 rounded-[14px] border border-white/20 px-6 text-sm font-bold text-white transition hover:bg-white/10">لدي حساب</button>
+                  <Button
+                    size="lg"
+                    onClick={onRegister}
+                    iconEnd={ArrowLeft}
+                    className="!bg-white !text-[#10172e] shadow-none hover:!bg-white/90"
+                  >
+                    ابدأ مجاناً
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={onLogin}
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-[14px] border border-white/20 px-6 text-sm font-bold text-white transition hover:bg-white/10"
+                  >
+                    لدي حساب
+                  </button>
                 </div>
               </div>
             </div>
@@ -431,40 +744,108 @@ export default function LandingPage({ onLogin, onRegister, theme, onToggleTheme,
           <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-[1.4fr_.6fr_.6fr_.8fr]">
             <div>
               <Logo />
-              <p className="mt-3 max-w-[280px] text-[12.5px] leading-6 text-muted">منصة عربية للامتحانات الرقمية، تركّز على وضوح التجربة وتحكّم المدرس في كل خطوة.</p>
+              <p className="mt-3 max-w-[280px] text-[12.5px] leading-6 text-muted">
+                منصة عربية للامتحانات الرقمية، تركّز على وضوح التجربة وتحكّم
+                المدرس في كل خطوة.
+              </p>
               <div className="mt-4 flex items-center gap-2">
-                <a href="https://github.com/AGbreel" target="_blank" rel="noreferrer" aria-label="GitHub" className="grid size-8 place-items-center rounded-[9px] border border-line text-muted transition hover:border-line-strong hover:text-ink"><GithubMark size={14} /></a>
-                <a href="https://www.linkedin.com/in/ahmed-gbreel-8465b0352/" target="_blank" rel="noreferrer" aria-label="LinkedIn" className="grid size-8 place-items-center rounded-[9px] border border-line text-muted transition hover:border-line-strong hover:text-ink"><LinkedinMark size={14} /></a>
-                <a href="mailto:ahmedgbreel47@gmail.com" aria-label="البريد الإلكتروني" className="grid size-8 place-items-center rounded-[9px] border border-line text-muted transition hover:border-line-strong hover:text-ink"><Mail size={14} /></a>
+                <a
+                  href="https://github.com/AGbreel"
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="GitHub"
+                  className="grid size-8 place-items-center rounded-[9px] border border-line text-muted transition hover:border-line-strong hover:text-ink"
+                >
+                  <GithubMark size={14} />
+                </a>
+                <a
+                  href="https://www.linkedin.com/in/ahmed-gbreel-8465b0352/"
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="LinkedIn"
+                  className="grid size-8 place-items-center rounded-[9px] border border-line text-muted transition hover:border-line-strong hover:text-ink"
+                >
+                  <LinkedinMark size={14} />
+                </a>
+                <a
+                  href="mailto:ahmedgbreel47@gmail.com"
+                  aria-label="البريد الإلكتروني"
+                  className="grid size-8 place-items-center rounded-[9px] border border-line text-muted transition hover:border-line-strong hover:text-ink"
+                >
+                  <Mail size={14} />
+                </a>
               </div>
             </div>
             <div>
               <h3 className="text-[12px] font-extrabold text-ink">المنصة</h3>
               <div className="mt-3 grid gap-2.5 text-[12px] text-muted">
-                <a href="#features" className="transition hover:text-primary">المزايا</a>
-                <a href="#workflow" className="transition hover:text-primary">كيف يعمل</a>
-                <a href="#faq" className="transition hover:text-primary">الأسئلة الشائعة</a>
+                <a href="#features" className="transition hover:text-primary">
+                  المزايا
+                </a>
+                <a href="#workflow" className="transition hover:text-primary">
+                  كيف يعمل
+                </a>
+                <a href="#faq" className="transition hover:text-primary">
+                  الأسئلة الشائعة
+                </a>
               </div>
             </div>
             <div>
               <h3 className="text-[12px] font-extrabold text-ink">الحساب</h3>
               <div className="mt-3 grid gap-2.5 text-[12px] text-muted">
-                <button type="button" onClick={onLogin} className="text-right transition hover:text-primary">تسجيل الدخول</button>
-                <button type="button" onClick={onRegister} className="text-right transition hover:text-primary">حساب جديد</button>
-                <button type="button" onClick={onOpenPortfolio} className="text-right transition hover:text-primary">ملف المطور</button>
+                <button
+                  type="button"
+                  onClick={onLogin}
+                  className="text-right transition hover:text-primary"
+                >
+                  تسجيل الدخول
+                </button>
+                <button
+                  type="button"
+                  onClick={onRegister}
+                  className="text-right transition hover:text-primary"
+                >
+                  حساب جديد
+                </button>
+                <button
+                  type="button"
+                  onClick={onOpenPortfolio}
+                  className="text-right transition hover:text-primary"
+                >
+                  ملف المطور
+                </button>
               </div>
             </div>
             <div>
               <h3 className="text-[12px] font-extrabold text-ink">تواصل</h3>
               <div className="mt-3 grid gap-2.5 text-[12px] text-muted">
-                <a href="mailto:ahmedgbreel47@gmail.com" className="ui-ltr text-left transition hover:text-primary">ahmedgbreel47@gmail.com</a>
-                <span className="inline-flex items-center gap-1 text-emerald"><ShieldCheck size={11} />بيانات الدخول محمية</span>
+                <a
+                  href="mailto:ahmedgbreel47@gmail.com"
+                  className="ui-ltr text-left transition hover:text-primary"
+                >
+                  ahmedgbreel47@gmail.com
+                </a>
+                <span className="inline-flex items-center gap-1 text-emerald">
+                  <ShieldCheck size={11} />
+                  بيانات الدخول محمية
+                </span>
               </div>
             </div>
           </div>
           <div className="mt-8 flex flex-col items-center justify-between gap-2 border-t border-line pt-5 text-[11px] text-subtle sm:flex-row">
-            <span>© {new Date().getFullYear()} امتحاني. جميع الحقوق محفوظة.</span>
-            <span>صُنع بعناية للفصول العربية · <button type="button" onClick={onOpenPortfolio} className="font-bold text-muted hover:text-primary">Ahmed Gbreel</button></span>
+            <span>
+              © {new Date().getFullYear()} امتحاني. جميع الحقوق محفوظة.
+            </span>
+            <span>
+              صُنع بعناية للفصول العربية ·{" "}
+              <button
+                type="button"
+                onClick={onOpenPortfolio}
+                className="font-bold text-muted hover:text-primary"
+              >
+                Ahmed Gbreel
+              </button>
+            </span>
           </div>
         </div>
       </footer>

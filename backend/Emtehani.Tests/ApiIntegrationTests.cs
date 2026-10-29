@@ -831,7 +831,7 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
     public async Task Student_OwnCode_JoinsCurrentPublishedExam_AndTeacherSeesCodeWithName()
     {
         var (teacher, teacherAuth) = await RegisterAndLogin(Email("roster-teacher"), "Teacher", "مدرس الحضور");
-        var (student, studentAuth) = await RegisterAndLogin(Email("roster-student"), "Student", "سارة أحمد رستم");
+        var (student, studentAuth) = await RegisterAndLogin(Email("roster-student"), "Student", "احمد جبريل");
         await EnrollStudent(teacher, student);
         var examId = await CreatePublishedExam(teacher);
         var studentCode = StudentCode(studentAuth);
@@ -848,7 +848,7 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
 
         var live = await teacher.GetFromJsonAsync<JsonNode>($"/api/exams/{examId}/live");
         var item = live!["items"]!.AsArray().Single();
-        Assert.Equal("سارة أحمد رستم", item!["studentName"]!.GetValue<string>());
+        Assert.Equal("احمد جبريل", item!["studentName"]!.GetValue<string>());
         Assert.Equal(studentCode, item["code"]!.GetValue<string>());
         Assert.Equal("Waiting", item["status"]!.GetValue<string>());
     }
