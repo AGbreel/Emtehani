@@ -9,8 +9,9 @@ import {
   PageHeader, Select, Skeleton, StatCard, Textarea, cn,
 } from '../components/ui';
 import ImageUploader from '../components/ImageUploader';
-import { request } from '../lib/api';
-import { EDUCATION_STAGES, gradesForStage } from '../lib/education';
+import MediaUploader from '../components/MediaUploader';
+import { assetUrl, request } from '../lib/api';
+import { EDUCATION_STAGES, SUBJECT_SUGGESTIONS, gradesForStage } from '../lib/education';
 import { formatDate, formatNumber } from '../lib/format';
 
 const statusFilters = [
@@ -111,7 +112,12 @@ function CourseForm({ open, onClose, token, course, onSaved }) {
         {error ? <Alert tone="danger" onClose={() => setError('')}>{error}</Alert> : null}
         <Field label="عنوان الكورس"><Input value={form.title} onChange={set('title')} placeholder="مثال: مراجعة الرياضيات — الصف الثالث الثانوي" /></Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="المادة"><Input value={form.subject} onChange={set('subject')} placeholder="رياضيات" /></Field>
+          <Field label="المادة">
+            <Input list="course-subject-suggestions" value={form.subject} onChange={set('subject')} placeholder="اختر أو اكتب المادة" />
+            <datalist id="course-subject-suggestions">
+              {SUBJECT_SUGGESTIONS.map((subject) => <option key={subject} value={subject} />)}
+            </datalist>
+          </Field>
           <Field label="نمط الكورس">
             <Select value={form.deliveryMode} onChange={set('deliveryMode')}>
               <option value="Online">أونلاين</option>
@@ -135,7 +141,7 @@ function CourseForm({ open, onClose, token, course, onSaved }) {
         <Field label="وصف مختصر"><Input value={form.shortDescription} onChange={set('shortDescription')} maxLength={500} /></Field>
         <Field label="الوصف الكامل"><Textarea value={form.description} onChange={set('description')} className="min-h-24" /></Field>
         <ImageUploader token={token} value={form.coverUrl} onChange={(url) => setForm((prev) => ({ ...prev, coverUrl: url }))} label="صورة الغلاف" aspect="video" />
-        <Field label="رابط الفيديو التعريفي (اختياري)"><Input value={form.introVideoUrl} onChange={set('introVideoUrl')} placeholder="https://..." /></Field>
+        <MediaUploader token={token} kind="Video" value={form.introVideoUrl} onChange={(url) => setForm((prev) => ({ ...prev, introVideoUrl: url }))} label="الفيديو التعريفي (اختياري)" hint="ارفع فيديو من جهازك أو الصق رابطاً خارجياً." />
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="مجاني للجميع">
             <Select value={form.isFree ? 'yes' : 'no'} onChange={(event) => setForm((prev) => ({ ...prev, isFree: event.target.value === 'yes' }))}>
@@ -164,9 +170,9 @@ function CourseForm({ open, onClose, token, course, onSaved }) {
   );
 }
 
-function SmallForm({ open, onClose, title, icon, children, onSave, busy, error }) {
+function SmallForm({ open, onClose, title, icon, children, onSave, busy, error, size = 'sm' }) {
   return (
-    <Modal open={open} onClose={onClose} title={title} icon={icon} size="sm"
+    <Modal open={open} onClose={onClose} title={title} icon={icon} size={size}
       footer={<><Button variant="ghost" size="sm" onClick={onClose}>إلغاء</Button><Button size="sm" loading={busy} onClick={onSave}>حفظ</Button></>}>
       <div className="grid gap-3 py-2">
         {error ? <Alert tone="danger" onClose={() => {}}>{error}</Alert> : null}
@@ -452,22 +458,28 @@ export default function TeachingCoursesPage({ token }) {
           <Field label="عنوان الوحدة"><Input value={unitForm.title} onChange={(e) => setUnitForm((p) => ({ ...p, title: e.target.value }))} /></Field>
           <Field label="وصف مختصر"><Textarea value={unitForm.description} onChange={(e) => setUnitForm((p) => ({ ...p, description: e.target.value }))} className="min-h-20" /></Field>
         </SmallForm>
-        <SmallForm open={Boolean(lessonTarget)} onClose={() => setLessonTarget(null)} title="درس جديد" icon={Video} busy={modalBusy} error={modalError} onSave={addLesson}>
+        <SmallForm open={Boolean(lessonTarget)} onClose={() => setLessonTarget(null)} title="درس جديد" icon={Video} busy={modalBusy} error={modalError} onSave={addLesson} size="lg">
           <Field label="عنوان الدرس"><Input value={lessonForm.title} onChange={(e) => setLessonForm((p) => ({ ...p, title: e.target.value }))} /></Field>
           <Field label="الوصف"><Textarea value={lessonForm.description} onChange={(e) => setLessonForm((p) => ({ ...p, description: e.target.value }))} className="min-h-20" /></Field>
-          <Field label="رابط الفيديو"><Input value={lessonForm.videoUrl} onChange={(e) => setLessonForm((p) => ({ ...p, videoUrl: e.target.value }))} placeholder="https://..." /></Field>
-          <Field label="رابط PDF"><Input value={lessonForm.pdfUrl} onChange={(e) => setLessonForm((p) => ({ ...p, pdfUrl: e.target.value }))} placeholder="https://..." /></Field>
+          <MediaUploader token={token} kind="Video" value={lessonForm.videoUrl} onChange={(url) => setLessonForm((p) => ({ ...p, videoUrl: url }))} label="فيديو الدرس" hint="ارفع الفيديو من جهازك مباشرة أو استخدم رابطاً جاهزاً." />
+          <MediaUploader token={token} kind="Pdf" value={lessonForm.pdfUrl} onChange={(url) => setLessonForm((p) => ({ ...p, pdfUrl: url }))} label="ملف PDF للدرس (اختياري)" />
           <Field label="المدة (دقائق)"><Input type="number" min="0" value={lessonForm.durationMinutes} onChange={(e) => setLessonForm((p) => ({ ...p, durationMinutes: e.target.value }))} /></Field>
           <label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" className="accent-primary" checked={lessonForm.isFreePreview} onChange={(e) => setLessonForm((p) => ({ ...p, isFreePreview: e.target.checked }))} />معاينة مجانية</label>
         </SmallForm>
-        <SmallForm open={Boolean(materialTarget)} onClose={() => setMaterialTarget(null)} title="مادة جديدة" icon={UploadCloud} busy={modalBusy} error={modalError} onSave={addMaterial}>
+        <SmallForm open={Boolean(materialTarget)} onClose={() => setMaterialTarget(null)} title="مادة جديدة" icon={UploadCloud} busy={modalBusy} error={modalError} onSave={addMaterial} size="lg">
           <Field label="عنوان المادة"><Input value={materialForm.title} onChange={(e) => setMaterialForm((p) => ({ ...p, title: e.target.value }))} /></Field>
           <Field label="النوع">
             <Select value={materialForm.kind} onChange={(e) => setMaterialForm((p) => ({ ...p, kind: e.target.value }))}>
               {materialKinds.map((kind) => <option key={kind.value} value={kind.value}>{kind.label}</option>)}
             </Select>
           </Field>
-          <Field label="الرابط"><Input value={materialForm.url} onChange={(e) => setMaterialForm((p) => ({ ...p, url: e.target.value }))} placeholder="https://..." /></Field>
+          {['Video', 'Audio', 'Pdf', 'Document'].includes(materialForm.kind) ? (
+            <MediaUploader token={token} kind={materialForm.kind} value={materialForm.url} onChange={(url) => setMaterialForm((p) => ({ ...p, url }))} label="ملف المادة" />
+          ) : materialForm.kind === 'Image' ? (
+            <ImageUploader token={token} value={materialForm.url} onChange={(url) => setMaterialForm((p) => ({ ...p, url }))} label="صورة المادة" aspect="cover" />
+          ) : (
+            <Field label="الرابط"><Input value={materialForm.url} onChange={(e) => setMaterialForm((p) => ({ ...p, url: e.target.value }))} placeholder="https://..." /></Field>
+          )}
           <div className="flex flex-wrap gap-3 text-xs font-bold">
             <label className="flex items-center gap-2"><input type="checkbox" className="accent-primary" checked={materialForm.isFreePreview} onChange={(e) => setMaterialForm((p) => ({ ...p, isFreePreview: e.target.checked }))} />معاينة</label>
             <label className="flex items-center gap-2"><input type="checkbox" className="accent-primary" checked={materialForm.isDownloadable} onChange={(e) => setMaterialForm((p) => ({ ...p, isDownloadable: e.target.checked }))} />قابل للتنزيل</label>
@@ -519,7 +531,7 @@ export default function TeachingCoursesPage({ token }) {
             <Card key={course.id} hover className="flex flex-col overflow-hidden">
               {course.coverUrl ? (
                 <button type="button" onClick={() => setSelectedId(course.id)} className="block h-32 w-full overflow-hidden bg-surface-soft">
-                  <img src={course.coverUrl} alt="" className="h-full w-full object-cover transition duration-300 hover:scale-105" loading="lazy" />
+                  <img src={assetUrl(course.coverUrl)} alt="" className="h-full w-full object-cover transition duration-300 hover:scale-105" loading="lazy" />
                 </button>
               ) : null}
               <div className="flex flex-1 flex-col p-4">

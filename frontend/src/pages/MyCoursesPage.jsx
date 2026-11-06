@@ -138,8 +138,8 @@ export default function MyCoursesPage({ token }) {
                             {lesson.description ? <p className="mt-2 text-[11.5px] leading-6 text-muted">{lesson.description}</p> : null}
                             {!lesson.locked ? (
                               <div className="mt-2 flex flex-wrap gap-1.5">
-                                {lesson.videoUrl ? <a href={lesson.videoUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-line bg-surface px-2 py-1 text-[10.5px] font-bold text-primary"><Play size={11} /> الفيديو</a> : null}
-                                {lesson.pdfUrl ? <a href={lesson.pdfUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-line bg-surface px-2 py-1 text-[10.5px] font-bold text-primary"><FileText size={11} /> PDF</a> : null}
+                                {lesson.videoUrl ? <a href={assetUrl(lesson.videoUrl)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-line bg-surface px-2 py-1 text-[10.5px] font-bold text-primary"><Play size={11} /> الفيديو</a> : null}
+                                {lesson.pdfUrl ? <a href={assetUrl(lesson.pdfUrl)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-line bg-surface px-2 py-1 text-[10.5px] font-bold text-primary"><FileText size={11} /> PDF</a> : null}
                                 {(lesson.materials || []).filter((item) => !item.locked).map((item) => {
                                   const Icon = lessonIcon(item.kind);
                                   return <button key={item.id} type="button" disabled={materialBusy} onClick={() => openMaterial(item)} className="inline-flex items-center gap-1 rounded-lg border border-line bg-surface px-2 py-1 text-[10.5px] font-bold text-ink"><Icon size={11} /> {item.title}</button>;

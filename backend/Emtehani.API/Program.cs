@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.StaticFiles;
@@ -175,6 +176,16 @@ builder.Services.AddRateLimiter(o =>
     };
 });
 builder.Services.AddProblemDetails();
+var maxMediaBytes = Math.Clamp(
+    builder.Configuration.GetValue<long?>("Uploads:MaxMediaBytes") ?? TeachingMediaFiles.DefaultMaxBytes,
+    5L * 1024 * 1024,
+    1024L * 1024 * 1024);
+// Multipart parsing must allow the same ceiling as the media upload endpoint;
+// everything else still runs behind the 8 MB Kestrel default below.
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = maxMediaBytes + 1024 * 1024;
+});
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new UtcDateTimeJsonConverter()));
 var swaggerEnabled = builder.Configuration.GetValue("Swagger:Enabled", builder.Environment.IsDevelopment());
@@ -264,6 +275,7 @@ app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
 // static assets. Create the folder at startup so a fresh deployment works.
 var uploadsWebRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
 Directory.CreateDirectory(Path.Combine(uploadsWebRoot, "uploads"));
+Directory.CreateDirectory(Path.Combine(uploadsWebRoot, "uploads", "media"));
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(uploadsWebRoot),
@@ -2839,6 +2851,142 @@ app.MapPost("/api/uploads/image", async (HttpRequest req, ClaimsPrincipal p) =>
         await buffer.CopyToAsync(target);
     }
     return Results.Ok(new { url = $"/uploads/{fileName}" });
+}).RequireAuthorization().RequireRateLimiting("api");
+
+// --- Device media uploads (lesson videos, audio, PDFs and documents) ---
+// Teachers upload straight from their machine, mirroring the El-Gabaly flow.
+// Cloudinary is used when configured so media survives redeployments; otherwise
+// the file is stored under wwwroot/uploads/media with an unguessable name.
+app.MapPost("/api/uploads/media", async (HttpRequest req, ClaimsPrincipal p, AppDbContext db) =>
+{
+    var role = p.FindFirstValue(ClaimTypes.Role);
+    if (role is not ("Teacher" or "Assistant")) return Results.Forbid();
+    if (role == "Assistant")
+    {
+        var scope = await TeachingAccess.ResolveAsync(db, p);
+        if (scope is null || !scope.Has(TeachingPermissions.ContentManage))
+            return TeachingAccess.Deny("ليس لديك صلاحية لرفع مواد الكورسات.");
+    }
+
+    var maxBytes = Math.Clamp(
+        app.Configuration.GetValue<long?>("Uploads:MaxMediaBytes") ?? TeachingMediaFiles.DefaultMaxBytes,
+        5L * 1024 * 1024,
+        1024L * 1024 * 1024);
+    // Kestrel's global ceiling is 8 MB; raise it for this request only.
+    var sizeFeature = req.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
+    if (sizeFeature is { IsReadOnly: false }) sizeFeature.MaxRequestBodySize = maxBytes + 1024 * 1024;
+    if (!req.HasFormContentType) return Results.BadRequest(new { message = "أرسل الملف من جهازك." });
+
+    IFormCollection form;
+    try
+    {
+        form = await req.ReadFormAsync();
+    }
+    catch (BadHttpRequestException)
+    {
+        return Results.Json(
+            new { message = $"حجم الملف أكبر من الحد المسموح ({maxBytes / (1024 * 1024)} ميجابايت)." },
+            statusCode: StatusCodes.Status413PayloadTooLarge);
+    }
+
+    var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
+    if (file is null || file.Length == 0) return Results.BadRequest(new { message = "اختر ملفاً أولاً." });
+    if (file.Length > maxBytes)
+        return Results.Json(
+            new { message = $"حجم الملف أكبر من الحد المسموح ({maxBytes / (1024 * 1024)} ميجابايت)." },
+            statusCode: StatusCodes.Status413PayloadTooLarge);
+
+    var extension = TeachingMediaFiles.NormalizeExtension(file.FileName);
+    var info = extension.Length == 0 ? null : TeachingMediaFiles.Describe(file.FileName);
+    if (info is null)
+        return Results.BadRequest(new { message = "الصيغة غير مدعومة. المسموح: MP4/WebM/MOV للفيديو، MP3/WAV للصوت، PDF وملفات Office للمستندات." });
+    var (kind, mime) = info.Value;
+
+    await using var stream = file.OpenReadStream();
+    var header = new byte[16];
+    var read = await stream.ReadAsync(header);
+    if (!TeachingMediaFiles.SignatureMatches(extension, header.AsSpan(0, read)))
+        return Results.BadRequest(new { message = "محتوى الملف لا يطابق صيغته. أعد اختيار الملف الأصلي." });
+
+    long sizeBytes = file.Length;
+    var cloudName = app.Configuration["Cloudinary:CloudName"];
+    var cloudKey = app.Configuration["Cloudinary:ApiKey"];
+    var cloudSecret = app.Configuration["Cloudinary:ApiSecret"];
+    if (!string.IsNullOrWhiteSpace(cloudName) && !string.IsNullOrWhiteSpace(cloudKey) && !string.IsNullOrWhiteSpace(cloudSecret))
+    {
+        try
+        {
+            var cloudinary = new Cloudinary(new Account(cloudName, cloudKey, cloudSecret)) { Api = { Secure = true } };
+            if (stream.CanSeek) stream.Position = 0;
+            if (kind is "Video" or "Audio")
+            {
+                var upload = await cloudinary.UploadLargeAsync(new VideoUploadParams
+                {
+                    File = new FileDescription(file.FileName, stream),
+                    Folder = "emtehani/media",
+                    PublicId = $"media_{Guid.NewGuid():N}",
+                    Overwrite = false,
+                }, 20 * 1024 * 1024);
+                if (upload.Error is null && upload.SecureUrl is not null)
+                    return Results.Ok(new
+                    {
+                        url = upload.SecureUrl.AbsoluteUri,
+                        storageKey = upload.PublicId,
+                        kind,
+                        fileName = file.FileName,
+                        sizeBytes,
+                        mimeType = mime,
+                        storage = "cloudinary"
+                    });
+            }
+            else
+            {
+                var publicId = $"media_{Guid.NewGuid():N}{extension}";
+                var upload = await cloudinary.UploadAsync(new RawUploadParams
+                {
+                    File = new FileDescription(file.FileName, stream),
+                    Folder = "emtehani/media",
+                    PublicId = publicId,
+                    Overwrite = false,
+                }, "raw");
+                if (upload.Error is null && upload.SecureUrl is not null)
+                    return Results.Ok(new
+                    {
+                        url = upload.SecureUrl.AbsoluteUri,
+                        storageKey = publicId,
+                        kind,
+                        fileName = file.FileName,
+                        sizeBytes,
+                        mimeType = mime,
+                        storage = "cloudinary"
+                    });
+            }
+            app.Logger.LogWarning("Cloudinary media upload failed; falling back to local storage.");
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogWarning(ex, "Cloudinary media upload threw; falling back to local storage.");
+        }
+    }
+
+    var localName = $"{Guid.NewGuid():N}{extension}";
+    var mediaRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "uploads", "media");
+    Directory.CreateDirectory(mediaRoot);
+    if (stream.CanSeek) stream.Position = 0;
+    await using (var target = File.Create(Path.Combine(mediaRoot, localName)))
+    {
+        await stream.CopyToAsync(target);
+    }
+    return Results.Ok(new
+    {
+        url = $"/uploads/media/{localName}",
+        storageKey = localName,
+        kind,
+        fileName = file.FileName,
+        sizeBytes,
+        mimeType = mime,
+        storage = "local"
+    });
 }).RequireAuthorization().RequireRateLimiting("api");
 
 // --- Teacher public portfolio (Draft stays private; Published is readable by students) ---

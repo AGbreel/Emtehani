@@ -10,14 +10,21 @@ import {
   PageHeader, Select, Skeleton, StatCard, Textarea, cn,
 } from '../components/ui';
 import { request } from '../lib/api';
+import { EDUCATION_STAGES, SUBJECT_SUGGESTIONS, academicYearOptions, currentAcademicYear, gradesForStage } from '../lib/education';
 import { formatDate, formatNumber } from '../lib/format';
 
 const weekDays = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 const statusLabels = { Scheduled: 'مجدولة', Waiting: 'بانتظار البدء', InProgress: 'جارية', Live: 'مباشر', Completed: 'منتهية', Cancelled: 'ملغاة' };
 const attendanceLabels = { Present: 'حاضر', Absent: 'غائب', Late: 'متأخر', Excused: 'بعذر' };
 
+function isoDate(offsetDays = 0) {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 const emptyGroup = {
-  name: '', description: '', subject: '', stage: '', grade: '', academicYear: '',
+  name: '', description: '', subject: '', stage: '', grade: '', academicYear: currentAcademicYear(),
   deliveryMode: 'Online', capacity: 20, location: '', onlineLink: '', price: 0,
   paymentType: 'Monthly', monthlyDueDay: 1, sessionBillingPolicy: 'PerAttendedSession',
   startDate: '', endDate: '', enrollmentOpen: true, isActive: true,
@@ -47,6 +54,9 @@ function GroupForm({ open, onClose, token, group, onSaved }) {
   }, [open, group]);
 
   const set = (key) => (event) => setForm((prev) => ({ ...prev, [key]: event.target.value }));
+  // Legacy free-text values stay selectable so editing an old group never loses data.
+  const stageOptions = form.stage && !EDUCATION_STAGES.includes(form.stage) ? [form.stage, ...EDUCATION_STAGES] : EDUCATION_STAGES;
+  const gradeOptions = form.grade && !gradesForStage(form.stage).includes(form.grade) ? [form.grade, ...gradesForStage(form.stage)] : gradesForStage(form.stage);
 
   async function save() {
     setError('');
@@ -82,10 +92,29 @@ function GroupForm({ open, onClose, token, group, onSaved }) {
         {error ? <Alert tone="danger" onClose={() => setError('')}>{error}</Alert> : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="اسم المجموعة"><Input value={form.name} onChange={set('name')} /></Field>
-          <Field label="المادة"><Input value={form.subject} onChange={set('subject')} /></Field>
-          <Field label="المرحلة"><Input value={form.stage} onChange={set('stage')} placeholder="ثانوي" /></Field>
-          <Field label="الصف"><Input value={form.grade} onChange={set('grade')} placeholder="الثالث الثانوي" /></Field>
-          <Field label="العام الدراسي"><Input value={form.academicYear} onChange={set('academicYear')} placeholder="2026/2027" /></Field>
+          <Field label="المادة">
+            <Input list="group-subject-suggestions" value={form.subject} onChange={set('subject')} placeholder="اختر أو اكتب المادة" />
+            <datalist id="group-subject-suggestions">
+              {SUBJECT_SUGGESTIONS.map((subject) => <option key={subject} value={subject} />)}
+            </datalist>
+          </Field>
+          <Field label="المرحلة">
+            <Select value={form.stage} onChange={(event) => setForm((prev) => ({ ...prev, stage: event.target.value, grade: '' }))}>
+              <option value="">اختر المرحلة</option>
+              {stageOptions.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
+            </Select>
+          </Field>
+          <Field label="الصف">
+            <Select value={form.grade} onChange={set('grade')} disabled={!form.stage}>
+              <option value="">اختر الصف</option>
+              {gradeOptions.map((grade) => <option key={grade} value={grade}>{grade}</option>)}
+            </Select>
+          </Field>
+          <Field label="العام الدراسي">
+            <Select value={form.academicYear} onChange={set('academicYear')}>
+              {academicYearOptions(form.academicYear).map((year) => <option key={year} value={year}>{year}</option>)}
+            </Select>
+          </Field>
           <Field label="النمط">
             <Select value={form.deliveryMode} onChange={set('deliveryMode')}><option value="Online">أونلاين</option><option value="Offline">حضوري</option><option value="Hybrid">مدمج</option></Select>
           </Field>
@@ -137,9 +166,13 @@ export default function TeachingGroupsPage({ token, onOpenChat }) {
   const [detailLoading, setDetailLoading] = useState(false);
   const [tab, setTab] = useState('members');
   const [students, setStudents] = useState([]);
+  const [courses, setCourses] = useState([]);
   const [busy, setBusy] = useState('');
   const [sessionOpen, setSessionOpen] = useState(false);
   const [sessionForm, setSessionForm] = useState({ date: '', startTime: '18:00', endTime: '19:30', title: '', deliveryMode: '', location: '', onlineLink: '', notes: '' });
+  const [rescheduleTarget, setRescheduleTarget] = useState(null);
+  const [rescheduleForm, setRescheduleForm] = useState({ date: '', startTime: '18:00', endTime: '19:30', reason: 'تأجيل' });
+  const [rescheduleBusy, setRescheduleBusy] = useState(false);
   const [attendanceSession, setAttendanceSession] = useState(null);
   const [attendanceItems, setAttendanceItems] = useState([]);
   const [attendanceBusy, setAttendanceBusy] = useState(false);
@@ -185,7 +218,14 @@ export default function TeachingGroupsPage({ token, onOpenChat }) {
     } catch { /* non-critical */ }
   }, [token]);
 
-  useEffect(() => { if (activeId) { loadStudents(); loadHomework(); } }, [activeId, loadStudents]);
+  const loadCourses = useCallback(async () => {
+    try {
+      const result = await request('/api/teaching/courses?pageSize=60', { token });
+      setCourses(result?.items ?? []);
+    } catch { /* non-critical */ }
+  }, [token]);
+
+  useEffect(() => { if (activeId) { loadStudents(); loadHomework(); loadCourses(); } }, [activeId, loadStudents, loadCourses]);
 
   const loadHomework = useCallback(async () => {
     if (!activeId) return;
@@ -214,6 +254,23 @@ export default function TeachingGroupsPage({ token, onOpenChat }) {
     } catch (err) { setError(err.message); }
   }
 
+  async function linkCourse(courseId) {
+    if (!courseId) return;
+    setBusy('course');
+    try {
+      await request(`/api/teaching/groups/${activeId}/courses`, { token, method: 'POST', body: JSON.stringify({ courseId }) });
+      setNotice('تم ربط الكورس بالمجموعة.');
+      await loadDetail(activeId, true);
+    } catch (err) { setError(err.message); } finally { setBusy(''); }
+  }
+
+  async function unlinkCourse(courseId) {
+    try {
+      await request(`/api/teaching/groups/${activeId}/courses/${courseId}`, { token, method: 'DELETE' });
+      await loadDetail(activeId, true);
+    } catch (err) { setError(err.message); }
+  }
+
   async function addSchedule() {
     setModalBusy(true); setModalError('');
     try {
@@ -233,7 +290,56 @@ export default function TeachingGroupsPage({ token, onOpenChat }) {
     } catch (err) { setError(err.message); }
   }
 
+  function openNewSession() {
+    const first = (detail?.schedules || [])[0];
+    setModalError('');
+    setSessionForm({
+      date: isoDate(0),
+      startTime: first?.startTime || '18:00',
+      endTime: first?.endTime || '19:30',
+      title: '',
+      deliveryMode: detail?.deliveryMode || '',
+      location: detail?.location || '',
+      onlineLink: detail?.onlineLink || '',
+      notes: '',
+    });
+    setSessionOpen(true);
+  }
+
+  function openReschedule(session) {
+    setModalError('');
+    setRescheduleForm({
+      date: new Date(session.startsAtUtc).toISOString().slice(0, 10),
+      startTime: new Date(session.startsAtUtc).toTimeString().slice(0, 5),
+      endTime: new Date(session.endsAtUtc).toTimeString().slice(0, 5),
+      reason: 'تأجيل',
+    });
+    setRescheduleTarget(session);
+  }
+
+  async function saveReschedule() {
+    if (!rescheduleTarget) return;
+    if (!rescheduleForm.date) { setModalError('اختر التاريخ الجديد.'); return; }
+    if (rescheduleForm.startTime >= rescheduleForm.endTime) { setModalError('وقت النهاية يجب أن يكون بعد البداية.'); return; }
+    setRescheduleBusy(true); setModalError('');
+    try {
+      await request(`/api/teaching/sessions/${rescheduleTarget.id}/reschedule`, {
+        token, method: 'POST',
+        body: JSON.stringify({
+          date: `${rescheduleForm.date}T00:00:00Z`,
+          startTime: rescheduleForm.startTime,
+          endTime: rescheduleForm.endTime,
+          reason: rescheduleForm.reason || 'تأجيل',
+        }),
+      });
+      setRescheduleTarget(null);
+      await loadDetail(activeId, true);
+    } catch (err) { setModalError(err.message); } finally { setRescheduleBusy(false); }
+  }
+
   async function createSession() {
+    if (!sessionForm.date) { setModalError('اختر تاريخ الحصة.'); return; }
+    if (sessionForm.startTime >= sessionForm.endTime) { setModalError('وقت النهاية يجب أن يكون بعد البداية.'); return; }
     setModalBusy(true); setModalError('');
     try {
       await request(`/api/teaching/groups/${activeId}/sessions`, {
@@ -351,7 +457,7 @@ export default function TeachingGroupsPage({ token, onOpenChat }) {
             <Button variant="secondary" size="sm" onClick={() => setActiveId(null)}>كل المجموعات</Button>
             {group.chatConversationId ? <Button variant="secondary" size="sm" icon={MessageCircle} onClick={() => onOpenChat?.()}>المحادثة</Button> : null}
             <Button variant="secondary" size="sm" icon={Pencil} onClick={() => { setEditing(group); setFormOpen(true); }}>تعديل</Button>
-            <Button size="sm" icon={CalendarPlus} onClick={() => { setModalError(''); setSessionOpen(true); }}>حصة جديدة</Button>
+            <Button size="sm" icon={CalendarPlus} onClick={openNewSession}>حصة جديدة</Button>
           </>} />
         {error ? <Alert tone="danger" className="mb-4" onClose={() => setError('')}>{error}</Alert> : null}
         {notice ? <Alert tone="success" className="mb-4" onClose={() => setNotice('')}>{notice}</Alert> : null}
@@ -362,6 +468,39 @@ export default function TeachingGroupsPage({ token, onOpenChat }) {
           <StatCard icon={ClipboardCheck} label="الرسوم" value={group.price ? `${formatNumber(group.price)} ج.م` : 'مجانية'} note={group.paymentType === 'Monthly' ? 'شهري' : 'بالحصة'} tone="warning" />
           <StatCard icon={MessageCircle} label="وضع المحادثة" value={group.chatMode === 'TeacherOnly' ? 'المعلم فقط' : group.chatMode === 'Moderated' ? 'مراجعة' : 'الجميع'} tone="emerald" />
         </div>
+
+        <Card className="mb-4 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-[13.5px] font-bold">كورسات المجموعة</h2>
+              <p className="mt-0.5 text-[10.5px] text-muted">اربط كورسًا بالمجموعة ليصل الطلاب لمحتواه، أو افصل كورسًا لم يعد مطلوبًا.</p>
+            </div>
+            <div className="w-full sm:w-56">
+              <Select value="" disabled={busy === 'course'} onChange={(event) => { linkCourse(event.target.value); event.target.value = ''; }}>
+                <option value="">ربط كورس...</option>
+                {courses
+                  .filter((course) => !(group.courses || []).some((linked) => linked.id === course.id))
+                  .map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}
+              </Select>
+            </div>
+          </div>
+          {(group.courses || []).length === 0 ? (
+            <p className="mt-3 rounded-[10px] border border-dashed border-line bg-surface-soft px-3 py-2.5 text-[11px] text-muted">لا توجد كورسات مرتبطة بعد.</p>
+          ) : (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {group.courses.map((course) => (
+                <span key={course.id} className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface-soft py-1 pr-2 pl-1 text-[11px] font-bold">
+                  <BookOpen size={12} className="text-primary" />
+                  {course.title}
+                  {course.isPublished ? null : <Badge tone="neutral">مسودة</Badge>}
+                  <button type="button" onClick={() => unlinkCourse(course.id)} className="grid size-5 place-items-center rounded text-subtle transition hover:text-danger" aria-label="فصل الكورس">
+                    <XCircle size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </Card>
 
         <div className="mb-4 flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1">
           {tabs.map((item) => (
@@ -417,7 +556,7 @@ export default function TeachingGroupsPage({ token, onOpenChat }) {
               <h2 className="text-[13.5px] font-bold">الحصص</h2>
               <div className="flex gap-2">
                 <Button size="sm" variant="secondary" icon={RefreshCw} loading={busy === 'generate'} onClick={generateSessions}>توليد من الجدول</Button>
-                <Button size="sm" icon={CalendarPlus} onClick={() => { setModalError(''); setSessionOpen(true); }}>حصة</Button>
+                <Button size="sm" icon={CalendarPlus} onClick={openNewSession}>حصة</Button>
               </div>
             </div>
             {(group.sessions || []).length === 0 ? <EmptyState icon={CalendarDays} title="لا توجد حصص" description="أضف جدولًا أسبوعيًا ثم ولّد الحصص تلقائيًا." /> : (
@@ -437,17 +576,7 @@ export default function TeachingGroupsPage({ token, onOpenChat }) {
                             <>
                               {session.status !== 'InProgress' ? <Button size="xs" variant="soft" onClick={() => sessionAction(session, 'start')} loading={busy === session.id}>بدء</Button> : <Button size="xs" variant="secondary" onClick={() => sessionAction(session, 'end')}>إنهاء</Button>}
                               <Button size="xs" variant="secondary" icon={ClipboardCheck} onClick={() => openAttendance(session)}>الحضور</Button>
-                              <Button size="xs" variant="ghost" icon={XCircle} onClick={async () => {
-                                const date = window.prompt('تاريخ جديد (YYYY-MM-DD)');
-                                if (!date) return;
-                                const start = window.prompt('وقت البداية HH:mm', '18:00');
-                                const end = window.prompt('وقت النهاية HH:mm', '19:30');
-                                if (!start || !end) return;
-                                try {
-                                  await request(`/api/teaching/sessions/${session.id}/reschedule`, { token, method: 'POST', body: JSON.stringify({ date: `${date}T00:00:00Z`, startTime: start, endTime: end, reason: 'تأجيل' }) });
-                                  await loadDetail(activeId, true);
-                                } catch (err) { setError(err.message); }
-                              }}>تأجيل</Button>
+                              <Button size="xs" variant="ghost" icon={XCircle} onClick={() => openReschedule(session)}>تأجيل</Button>
                               <Button size="xs" variant="ghost" onClick={() => sessionAction(session, 'cancel')}>إلغاء</Button>
                             </>
                           ) : <Button size="xs" variant="secondary" icon={ClipboardCheck} onClick={() => openAttendance(session)}>الحضور</Button>}
@@ -512,15 +641,45 @@ export default function TeachingGroupsPage({ token, onOpenChat }) {
           footer={<><Button variant="ghost" size="sm" onClick={() => setSessionOpen(false)}>إلغاء</Button><Button size="sm" loading={modalBusy} onClick={createSession}>إضافة</Button></>}>
           <div className="grid gap-3 py-2">
             {modalError ? <Alert tone="danger">{modalError}</Alert> : null}
-            <Field label="التاريخ"><Input type="date" value={sessionForm.date} onChange={(e) => setSessionForm((p) => ({ ...p, date: e.target.value }))} /></Field>
+            <Field label="التاريخ">
+              <Input type="date" value={sessionForm.date} onChange={(e) => setSessionForm((p) => ({ ...p, date: e.target.value }))} />
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {[['اليوم', 0], ['غدًا', 1], ['بعد أسبوع', 7]].map(([label, days]) => (
+                  <button key={label} type="button" onClick={() => setSessionForm((p) => ({ ...p, date: isoDate(days) }))}
+                    className={cn('rounded-lg border px-2.5 py-1 text-[10.5px] font-bold transition', sessionForm.date === isoDate(days) ? 'border-primary bg-primary-soft text-primary' : 'border-line bg-surface text-muted hover:text-ink')}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="من"><Input type="time" value={sessionForm.startTime} onChange={(e) => setSessionForm((p) => ({ ...p, startTime: e.target.value }))} /></Field>
               <Field label="إلى"><Input type="time" value={sessionForm.endTime} onChange={(e) => setSessionForm((p) => ({ ...p, endTime: e.target.value }))} /></Field>
             </div>
-            <Field label="عنوان الحصة"><Input value={sessionForm.title} onChange={(e) => setSessionForm((p) => ({ ...p, title: e.target.value }))} /></Field>
+            <Field label="عنوان الحصة (اختياري)"><Input value={sessionForm.title} onChange={(e) => setSessionForm((p) => ({ ...p, title: e.target.value }))} placeholder="مثال: مراجعة الوحدة الأولى" /></Field>
+            <Field label="نمط الحصة">
+              <Select value={sessionForm.deliveryMode} onChange={(e) => setSessionForm((p) => ({ ...p, deliveryMode: e.target.value }))}>
+                <option value="">مثل المجموعة</option>
+                <option value="Online">أونلاين</option>
+                <option value="Offline">حضوري</option>
+                <option value="Hybrid">مدمج</option>
+              </Select>
+            </Field>
             <Field label="المكان"><Input value={sessionForm.location} onChange={(e) => setSessionForm((p) => ({ ...p, location: e.target.value }))} /></Field>
-            <Field label="رابط الحصة"><Input value={sessionForm.onlineLink} onChange={(e) => setSessionForm((p) => ({ ...p, onlineLink: e.target.value }))} /></Field>
-            {modalError ? null : null}
+            <Field label="رابط الحصة"><Input value={sessionForm.onlineLink} onChange={(e) => setSessionForm((p) => ({ ...p, onlineLink: e.target.value }))} placeholder="https://..." dir="ltr" /></Field>
+          </div>
+        </Modal>
+
+        <Modal open={Boolean(rescheduleTarget)} onClose={() => setRescheduleTarget(null)} title="تأجيل الحصة" icon={CalendarDays} size="sm"
+          footer={<><Button variant="ghost" size="sm" onClick={() => setRescheduleTarget(null)}>إلغاء</Button><Button size="sm" loading={rescheduleBusy} onClick={saveReschedule}>حفظ الموعد</Button></>}>
+          <div className="grid gap-3 py-2">
+            {modalError ? <Alert tone="danger">{modalError}</Alert> : null}
+            <Field label="التاريخ الجديد"><Input type="date" value={rescheduleForm.date} onChange={(e) => setRescheduleForm((p) => ({ ...p, date: e.target.value }))} /></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="من"><Input type="time" value={rescheduleForm.startTime} onChange={(e) => setRescheduleForm((p) => ({ ...p, startTime: e.target.value }))} /></Field>
+              <Field label="إلى"><Input type="time" value={rescheduleForm.endTime} onChange={(e) => setRescheduleForm((p) => ({ ...p, endTime: e.target.value }))} /></Field>
+            </div>
+            <Field label="سبب التأجيل"><Input value={rescheduleForm.reason} onChange={(e) => setRescheduleForm((p) => ({ ...p, reason: e.target.value }))} /></Field>
           </div>
         </Modal>
 

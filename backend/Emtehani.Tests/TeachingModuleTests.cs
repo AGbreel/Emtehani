@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json.Nodes;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Emtehani.Tests;
@@ -219,6 +222,61 @@ public sealed class TeachingModuleTests(ApiFactory factory) : IClassFixture<ApiF
 
         var invalid = await teacher.PutAsJsonAsync($"/api/chat/conversations/{conversationId}/mode", new { mode = "BanEveryone" });
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+    }
+
+    [Fact]
+    public async Task MediaUpload_RequiresTeacher_RejectsDisguisedFiles_AndStoresVideos()
+    {
+        static ByteArrayContent Mp4Body() => new(new byte[]
+        {
+            0x00, 0x00, 0x00, 0x18, (byte)'f', (byte)'t', (byte)'y', (byte)'p',
+            (byte)'i', (byte)'s', (byte)'o', (byte)'m', 0x00, 0x00, 0x02, 0x00
+        });
+
+        using (var anonymousForm = new MultipartFormDataContent())
+        {
+            var content = Mp4Body();
+            content.Headers.ContentType = new MediaTypeHeaderValue("video/mp4");
+            anonymousForm.Add(content, "file", "lesson.mp4");
+            var anonymous = await factory.CreateClient().PostAsync("/api/uploads/media", anonymousForm);
+            Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        }
+
+        var teacherResult = await Teacher("مدرس رفع الوسائط");
+        var teacher = teacherResult.Client;
+
+        using (var disguisedForm = new MultipartFormDataContent())
+        {
+            var content = new ByteArrayContent(Encoding.UTF8.GetBytes("<html>definitely not a video</html>"));
+            content.Headers.ContentType = new MediaTypeHeaderValue("video/mp4");
+            disguisedForm.Add(content, "file", "fake.mp4");
+            var disguised = await teacher.PostAsync("/api/uploads/media", disguisedForm);
+            Assert.Equal(HttpStatusCode.BadRequest, disguised.StatusCode);
+        }
+
+        using (var validForm = new MultipartFormDataContent())
+        {
+            var content = Mp4Body();
+            content.Headers.ContentType = new MediaTypeHeaderValue("video/mp4");
+            validForm.Add(content, "file", "lesson.mp4");
+            var response = await teacher.PostAsync("/api/uploads/media", validForm);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var payload = await Json(response);
+            Assert.Equal("Video", payload["kind"]!.GetValue<string>());
+            Assert.Equal(16, payload["sizeBytes"]!.GetValue<long>());
+            var url = payload["url"]!.GetValue<string>();
+            if (url.StartsWith("/uploads/"))
+            {
+                var root = factory.Services.GetRequiredService<IWebHostEnvironment>().ContentRootPath;
+                var path = Path.Combine(root, "wwwroot", url.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+                Assert.True(File.Exists(path));
+                File.Delete(path);
+            }
+            else
+            {
+                Assert.StartsWith("https://", url);
+            }
+        }
     }
 }
 

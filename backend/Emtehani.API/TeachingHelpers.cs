@@ -277,6 +277,78 @@ public static class TeachingMediaTokens
 }
 
 /// <summary>
+/// File-type policy for device uploads. The extension picks the kind, but the
+/// header signature must match too so a renamed executable cannot masquerade
+/// as a lesson video.
+/// </summary>
+public static class TeachingMediaFiles
+{
+    public const long DefaultMaxBytes = 200L * 1024 * 1024;
+
+    private static readonly Dictionary<string, (string Kind, string Mime)> Types = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".mp4"] = ("Video", "video/mp4"),
+        [".m4v"] = ("Video", "video/mp4"),
+        [".webm"] = ("Video", "video/webm"),
+        [".mov"] = ("Video", "video/quicktime"),
+        [".mp3"] = ("Audio", "audio/mpeg"),
+        [".m4a"] = ("Audio", "audio/mp4"),
+        [".aac"] = ("Audio", "audio/aac"),
+        [".ogg"] = ("Audio", "audio/ogg"),
+        [".oga"] = ("Audio", "audio/ogg"),
+        [".wav"] = ("Audio", "audio/wav"),
+        [".pdf"] = ("Pdf", "application/pdf"),
+        [".doc"] = ("Document", "application/msword"),
+        [".docx"] = ("Document", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        [".ppt"] = ("Document", "application/vnd.ms-powerpoint"),
+        [".pptx"] = ("Document", "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+        [".xls"] = ("Document", "application/vnd.ms-excel"),
+        [".xlsx"] = ("Document", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        [".txt"] = ("Document", "text/plain"),
+        [".csv"] = ("Document", "text/csv"),
+        [".rtf"] = ("Document", "application/rtf"),
+    };
+
+    public static (string Kind, string Mime)? Describe(string fileName)
+    {
+        var extension = Path.GetExtension(fileName);
+        return extension.Length > 0 && Types.TryGetValue(extension, out var info) ? info : null;
+    }
+
+    public static string NormalizeExtension(string fileName)
+    {
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+        return extension.Length is > 0 and <= 8 && extension[1..].All(char.IsLetterOrDigit) ? extension : "";
+    }
+
+    public static bool SignatureMatches(string extension, ReadOnlySpan<byte> h) =>
+        extension.ToLowerInvariant() switch
+        {
+            ".mp4" or ".m4v" or ".mov" or ".m4a" => At(h, 4, "ftyp") || At(h, 4, "moov") || At(h, 4, "wide") || At(h, 4, "mdat"),
+            ".webm" => h.Length >= 4 && h[0] == 0x1A && h[1] == 0x45 && h[2] == 0xDF && h[3] == 0xA3,
+            ".mp3" => At(h, 0, "ID3") || (h.Length >= 2 && h[0] == 0xFF && (h[1] & 0xE0) == 0xE0),
+            ".aac" => h.Length >= 2 && h[0] == 0xFF && (h[1] == 0xF1 || h[1] == 0xF9),
+            ".ogg" or ".oga" => At(h, 0, "OggS"),
+            ".wav" => At(h, 0, "RIFF") && At(h, 8, "WAVE"),
+            ".pdf" => At(h, 0, "%PDF"),
+            ".docx" or ".pptx" or ".xlsx" => h.Length >= 4 && h[0] == 0x50 && h[1] == 0x4B
+                && ((h[2] == 0x03 && h[3] == 0x04) || (h[2] == 0x05 && h[3] == 0x06)),
+            ".doc" or ".ppt" or ".xls" => h.Length >= 8 && h[0] == 0xD0 && h[1] == 0xCF && h[2] == 0x11 && h[3] == 0xE0,
+            ".rtf" => At(h, 0, "{\\rtf"),
+            ".txt" or ".csv" => true,
+            _ => false,
+        };
+
+    private static bool At(ReadOnlySpan<byte> h, int offset, string ascii)
+    {
+        if (h.Length < offset + ascii.Length) return false;
+        for (var i = 0; i < ascii.Length; i++)
+            if (h[offset + i] != ascii[i]) return false;
+        return true;
+    }
+}
+
+/// <summary>
 /// Central chat authorization. Every read/write route uses this so a bypassed
 /// frontend cannot read a conversation the role is not entitled to.
 /// </summary>
