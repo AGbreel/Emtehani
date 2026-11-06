@@ -129,6 +129,8 @@ const pageHashes = {
   learning: '/learning',
   'my-finance': '/my-finance',
   plans: '/plans',
+  admin: '/admin',
+  'admin-teachers': '/admin-teachers',
   'admin-reports': '/admin-reports',
   'teacher-profile': '/teacher-profile',
   subscription: '/subscription',
