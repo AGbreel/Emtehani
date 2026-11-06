@@ -469,7 +469,7 @@ export default function TeachingCoursesPage({ token }) {
         <SmallForm open={Boolean(materialTarget)} onClose={() => setMaterialTarget(null)} title="مادة جديدة" icon={UploadCloud} busy={modalBusy} error={modalError} onSave={addMaterial} size="lg">
           <Field label="عنوان المادة"><Input value={materialForm.title} onChange={(e) => setMaterialForm((p) => ({ ...p, title: e.target.value }))} /></Field>
           <Field label="النوع">
-            <Select value={materialForm.kind} onChange={(e) => setMaterialForm((p) => ({ ...p, kind: e.target.value }))}>
+            <Select value={materialForm.kind} onChange={(e) => setMaterialForm((p) => ({ ...p, kind: e.target.value, url: '' }))}>
               {materialKinds.map((kind) => <option key={kind.value} value={kind.value}>{kind.label}</option>)}
             </Select>
           </Field>
