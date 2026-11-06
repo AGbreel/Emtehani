@@ -8,6 +8,7 @@ import {
   BookOpenCheck,
   CalendarDays,
   ClipboardCheck,
+  Compass,
   CreditCard,
   ExternalLink,
   FileText,
@@ -55,6 +56,7 @@ const teacherNav = [
 
 const studentNav = [
   { key: 'dashboard', label: 'نظرة عامة', shortLabel: 'الرئيسية', icon: LayoutDashboard },
+  { key: 'explore', label: 'استكشف الكورسات والمجموعات', shortLabel: 'استكشف', icon: Compass },
   { key: 'chat', label: 'المحادثات', shortLabel: 'المحادثات', icon: MessageCircle },
   { key: 'learning', label: 'تعلّمي', shortLabel: 'تعلّمي', icon: BookOpenCheck },
   { key: 'courses', label: 'كورساتي', shortLabel: 'كورساتي', icon: BookOpen },
@@ -100,6 +102,7 @@ const pageMeta = {
   assistants: { title: 'المساعدون', eyebrow: 'الصلاحيات والمجموعات' },
   reports: { title: 'التقارير', eyebrow: 'تحليلات وتصدير' },
   announcements: { title: 'الإعلانات', eyebrow: 'التواصل العام' },
+  explore: { title: 'استكشف الكورسات والمجموعات', eyebrow: 'محتوى مدرسيك' },
   learning: { title: 'تعلّمي', eyebrow: 'رحلتك التعليمية' },
   'my-finance': { title: 'مدفوعاتي', eyebrow: 'الحساب المالي' },
   plans: { title: 'خطط الاشتراك', eyebrow: 'اشتراكات المدرسين' },
@@ -224,7 +227,8 @@ export default function AppShell({ user, page, activePage, title, subtitle, chil
         ? assistantNav
         : studentNav;
   const meta = pageMeta[page] || pageMeta.dashboard;
-  const visibleNav = nav.slice(0, 4);
+  // Students get a fifth slot so discovery, chat and their learning pages all stay one tap away.
+  const visibleNav = nav.slice(0, user?.role === 'Student' ? 5 : 4);
   useFocusTrap(mobileOpen, mobileNavRef, () => setMobileOpen(false));
 
   const loadUnread = useCallback(async () => {

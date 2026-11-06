@@ -49,7 +49,40 @@ public sealed class TeachingModuleTests(ApiFactory factory) : IClassFixture<ApiF
         return (client, Guid.Parse(auth["userId"]!.GetValue<string>()));
     }
 
-    private static object Course(string title) => new
+    private async Task<HttpClient> LinkedStudent(HttpClient teacher, Guid teacherId, string name)
+    {
+        var client = factory.CreateClient();
+        var email = Email("teaching-student");
+        var register = await client.PostAsJsonAsync("/api/auth/register", new
+        {
+            fullName = name,
+            email,
+            password = Password,
+            role = "Student",
+            stage = "ثانوي",
+            grade = "الصف الثالث الثانوي",
+            studentPhone = "01" + Random.Shared.Next(100000000, 999999999),
+            parentPhone = "01" + Random.Shared.Next(100000000, 999999999),
+            teacherCount = 1,
+            teacherIds = new[] { teacherId }
+        });
+        Assert.True(register.StatusCode == HttpStatusCode.OK,
+            $"{register.StatusCode}: {await register.Content.ReadAsStringAsync()}");
+        var login = await client.PostAsJsonAsync("/api/auth/login", new { email, password = Password });
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        var auth = await Json(login);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth["token"]!.GetValue<string>());
+
+        var requests = await teacher.GetFromJsonAsync<JsonNode>("/api/teacher/requests");
+        var row = requests!.AsArray().First(x =>
+            x!["studentEmail"]!.GetValue<string>() == email
+            && x["status"]!.GetValue<string>() == "Pending");
+        var accept = await teacher.PutAsJsonAsync($"/api/teacher/requests/{Id(row)}", new { action = "accept" });
+        Assert.Equal(HttpStatusCode.OK, accept.StatusCode);
+        return client;
+    }
+
+    private static object Course(string title, bool isFree = false) => new
     {
         title,
         shortDescription = "وصف قصير",
@@ -58,14 +91,14 @@ public sealed class TeachingModuleTests(ApiFactory factory) : IClassFixture<ApiF
         stage = "ثانوي",
         grade = "الصف الثالث الثانوي",
         deliveryMode = "Online",
-        isFree = false,
-        price = 100,
+        isFree,
+        price = isFree ? 0 : 100,
         capacity = 30,
         accessDays = 90,
         isPublished = true
     };
 
-    private static object Group(string name) => new
+    private static object Group(string name, bool enrollmentOpen = true) => new
     {
         name,
         description = "مجموعة اختبار",
@@ -79,7 +112,7 @@ public sealed class TeachingModuleTests(ApiFactory factory) : IClassFixture<ApiF
         paymentType = "Monthly",
         monthlyDueDay = 5,
         sessionBillingPolicy = "PerAttendedSession",
-        enrollmentOpen = true,
+        enrollmentOpen,
         isActive = true,
         lateGraceMinutes = 10,
         qrValidityMinutes = 5,
@@ -277,6 +310,69 @@ public sealed class TeachingModuleTests(ApiFactory factory) : IClassFixture<ApiF
                 Assert.StartsWith("https://", url);
             }
         }
+    }
+
+    [Fact]
+    public async Task Students_DiscoverLinkedGroupsAndCourses_AndJoinThemselves()
+    {
+        var (teacher, teacherId) = await Teacher("مدرس الاستكشاف");
+        var student = await LinkedStudent(teacher, teacherId, "طالب الاستكشاف محمد أحمد");
+        var (otherTeacher, otherId) = await Teacher("مدرس آخر للاستكشاف");
+        var stranger = await LinkedStudent(otherTeacher, otherId, "طالب غير مرتبط علي حسن");
+
+        var freeCourse = await teacher.PostAsJsonAsync("/api/teaching/courses", Course("كورس مجاني", isFree: true));
+        Assert.Equal(HttpStatusCode.OK, freeCourse.StatusCode);
+        var freeCourseId = Id(await Json(freeCourse));
+        var paidCourse = await teacher.PostAsJsonAsync("/api/teaching/courses", Course("كورس مدفوع"));
+        Assert.Equal(HttpStatusCode.OK, paidCourse.StatusCode);
+        var paidCourseId = Id(await Json(paidCourse));
+
+        var openGroup = await teacher.PostAsJsonAsync("/api/teaching/groups", Group("مجموعة مفتوحة"));
+        Assert.Equal(HttpStatusCode.OK, openGroup.StatusCode);
+        var openGroupId = Id(await Json(openGroup));
+        var closedGroup = await teacher.PostAsJsonAsync("/api/teaching/groups", Group("مجموعة مغلقة", enrollmentOpen: false));
+        Assert.Equal(HttpStatusCode.OK, closedGroup.StatusCode);
+        var closedGroupId = Id(await Json(closedGroup));
+
+        var explore = await student.GetFromJsonAsync<JsonNode>("/api/teaching/explore/groups");
+        var openRow = explore!["items"]!.AsArray().Single(x => Id(x) == openGroupId);
+        Assert.True(openRow!["canJoin"]!.GetValue<bool>());
+        Assert.Equal(0, openRow["activeMembers"]!.GetValue<int>());
+        var closedRow = explore["items"]!.AsArray().Single(x => Id(x) == closedGroupId);
+        Assert.False(closedRow!["canJoin"]!.GetValue<bool>());
+
+        var catalog = await student.GetFromJsonAsync<JsonNode>("/api/teaching/catalog");
+        Assert.Contains(catalog!["items"]!.AsArray(), x => Id(x) == freeCourseId);
+        Assert.Contains(catalog["items"]!.AsArray(), x => Id(x) == paidCourseId);
+
+        var joinGroup = await student.PostAsync($"/api/teaching/groups/{openGroupId}/join", null);
+        Assert.Equal(HttpStatusCode.OK, joinGroup.StatusCode);
+        Assert.False((await Json(joinGroup))["alreadyMember"]!.GetValue<bool>());
+        var joinAgain = await student.PostAsync($"/api/teaching/groups/{openGroupId}/join", null);
+        Assert.Equal(HttpStatusCode.OK, joinAgain.StatusCode);
+        Assert.True((await Json(joinAgain))["alreadyMember"]!.GetValue<bool>());
+        var myGroups = await student.GetFromJsonAsync<JsonNode>("/api/teaching/my/groups");
+        Assert.Contains(myGroups!["items"]!.AsArray(), x => Id(x) == openGroupId);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await student.PostAsync($"/api/teaching/groups/{closedGroupId}/join", null)).StatusCode);
+
+        var joinCourse = await student.PostAsync($"/api/teaching/catalog/{freeCourseId}/join", null);
+        Assert.Equal(HttpStatusCode.OK, joinCourse.StatusCode);
+        Assert.False((await Json(joinCourse))["alreadyEnrolled"]!.GetValue<bool>());
+        var enrollAgain = await student.PostAsync($"/api/teaching/catalog/{freeCourseId}/join", null);
+        Assert.Equal(HttpStatusCode.OK, enrollAgain.StatusCode);
+        Assert.True((await Json(enrollAgain))["alreadyEnrolled"]!.GetValue<bool>());
+        var myCourses = await student.GetFromJsonAsync<JsonNode>("/api/teaching/my/courses");
+        Assert.Contains(myCourses!["items"]!.AsArray(), x => Id(x) == freeCourseId);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await student.PostAsync($"/api/teaching/catalog/{paidCourseId}/join", null)).StatusCode);
+
+        var strangerExplore = await stranger.GetFromJsonAsync<JsonNode>("/api/teaching/explore/groups");
+        Assert.Empty(strangerExplore!["items"]!.AsArray());
+        var strangerCatalog = await stranger.GetFromJsonAsync<JsonNode>("/api/teaching/catalog");
+        Assert.Empty(strangerCatalog!["items"]!.AsArray());
+        Assert.Equal(HttpStatusCode.Forbidden, (await stranger.PostAsync($"/api/teaching/groups/{openGroupId}/join", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await stranger.PostAsync($"/api/teaching/catalog/{freeCourseId}/join", null)).StatusCode);
     }
 }
 

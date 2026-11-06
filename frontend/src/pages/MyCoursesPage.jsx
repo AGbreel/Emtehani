@@ -28,7 +28,7 @@ function Watermark({ text }) {
   );
 }
 
-export default function MyCoursesPage({ token }) {
+export default function MyCoursesPage({ token, onExplore }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -197,7 +197,14 @@ export default function MyCoursesPage({ token }) {
         <StatCard icon={Lock} label="اشتراكات نشطة" value={formatNumber(items.filter((x) => !x.accessViaGroup).length)} tone="warning" />
       </div>
       {items.length === 0 ? (
-        <Card><EmptyState icon={BookOpen} title="لا توجد كورسات متاحة" description="عندما ينشر مدرسك كورسًا أو يضيفك لمجموعة مرتبطة بكورس سيظهر هنا." /></Card>
+        <Card>
+          <EmptyState
+            icon={BookOpen}
+            title="لا توجد كورسات بعد"
+            description="اذهب إلى «استكشف» لترى كورسات مدرسيك، وابدأ أي كورس مجاني بضغطة واحدة."
+            action={onExplore ? <Button size="sm" onClick={onExplore}>استكشاف الكورسات</Button> : null}
+          />
+        </Card>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {items.map((course) => (

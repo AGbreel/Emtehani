@@ -5404,6 +5404,7 @@ app.MapGet("/api/submissions/{id:guid}/review", async (Guid id, ClaimsPrincipal 
 app.MapTeachingEndpoints();
 app.MapTeachingGroupEndpoints();
 app.MapTeachingFinanceEndpoints();
+app.MapTeachingExploreEndpoints();
 app.MapTeachingCommunicationEndpoints();
 app.MapChatGovernanceEndpoints();
 app.MapAdminReportEndpoints();

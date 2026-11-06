@@ -26,7 +26,7 @@ function isoDaysFromNow(days) {
   return new Date(Date.now() + days * 86400000).toISOString().slice(0, 10);
 }
 
-export default function StudentLearningPage({ token, onOpenChat }) {
+export default function StudentLearningPage({ token, onOpenChat, onExplore }) {
   const [tab, setTab] = useState('groups');
   const [groups, setGroups] = useState([]);
   const [sessions, setSessions] = useState([]);
@@ -168,7 +168,16 @@ export default function StudentLearningPage({ token, onOpenChat }) {
       {loading ? <Card className="p-4"><Skeleton className="h-40 w-full" /></Card> : null}
 
       {!loading && tab === 'groups' ? (
-        groups.length === 0 ? <Card><EmptyState icon={BookOpen} title="لا توجد مجموعات" description="اطلب الانضمام لمعلم من صفحة المعلمين لتظهر مجموعاتك." /></Card> : (
+        groups.length === 0 ? (
+          <Card>
+            <EmptyState
+              icon={BookOpen}
+              title="لا توجد مجموعات بعد"
+              description="اذهب إلى «استكشف» لترى مجموعات مدرسيك المتاحة وتنضم إليها مباشرة."
+              action={onExplore ? <Button size="sm" onClick={onExplore}>استكشاف المجموعات</Button> : null}
+            />
+          </Card>
+        ) : (
           <div className="grid gap-3 md:grid-cols-2">
             {groups.map((group) => (
               <Card key={group.id} className="p-4">

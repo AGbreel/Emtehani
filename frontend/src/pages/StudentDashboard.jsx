@@ -8,6 +8,7 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock3,
+  Compass,
   FileText,
   GraduationCap,
   Hourglass,
@@ -37,7 +38,7 @@ import { request } from '../lib/api';
 import { EDUCATION_STAGES, gradesForStage, isValidEducation } from '../lib/education';
 import { formatDate, formatNumber, percent, scoreText } from '../lib/format';
 
-export default function StudentDashboard({ token, user, onBrowse, onEnter, onViewResults, onOpenReview, onProfileUpdated }) {
+export default function StudentDashboard({ token, user, onBrowse, onExplore, onEnter, onViewResults, onOpenReview, onProfileUpdated }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -150,6 +151,7 @@ export default function StudentDashboard({ token, user, onBrowse, onEnter, onVie
         action={
           <>
             <Button variant="secondary" size="sm" icon={RefreshCw} loading={availableRefreshing || refreshing} onClick={refreshAll}>تحديث</Button>
+            <Button variant="secondary" size="sm" icon={Compass} onClick={onExplore}>الكورسات والمجموعات</Button>
             <Button size="sm" icon={BookOpenCheck} onClick={onBrowse}>كل الامتحانات المتاحة</Button>
           </>
         }
