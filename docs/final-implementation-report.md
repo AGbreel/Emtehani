@@ -1,0 +1,273 @@
+# تقرير التنفيذ النهائي — تحويل امتحاني إلى منصة تعليمية متعددة المستأجرين
+
+> التاريخ: 2026-11-06
+> النطاق: `C:\Users\Administrator\Downloads\Emtehani-main`
+> المرجع التحليلي: `docs/feature-mapping-algebaly-emtehani.md`
+> التدقيق الأمني: `docs/security-audit.md`
+> **ملاحظة:** لم يُنفَّذ نشر جديد (Backend/Frontend) ضمن هذه الجلسة. ما تم هو تنفيذ واختبار
+> وبناء الإنتاج محليًا. خطوات النشر موثقة في القسم 9.
+
+---
+
+## 1. الملخص التنفيذي
+
+تم توسيع امتحاني داخل نفس المشروع (بدون مشروع جديد وبدون نسخ واجهات Razor) إلى منصة
+SaaS متعددة المدرسين، مع الحفاظ على نظام الامتحانات القائم دون كسر. أُضيفت:
+
+- أدوار `Assistant` بصلاحيات دقيقة مفروضة من الخادم.
+- كورسات → وحدات → دروس → مواد + تقدّم الطالب.
+- مجموعات + عضويات + جداول + حصص + حضور + QR.
+- واجبات وتسليمات وتصحيح.
+- مالية منفصلة تمامًا: اشتراك المدرس مع المنصة، ومدفوعات الطالب للمدرس.
+- شات جماعي/فردي مع أوضاع إرسال وإشراف وكتم وحذف وتثبيت وسجل تدقيق.
+- إعلانات وإشعارات موحدة بمركز إشعارات وتفضيلات.
+- تقارير وتصدير CSV متوافق مع Excel وطباعة PDF من المتصفح.
+- حماية محتوى عبر رموز موقعة قصيرة العمر + سجل وصول + علامة مائية.
+- إعادة تصميم وتوصيل كل الصفحات الجديدة بهوية المنصة وحركاتها.
+
+---
+
+## 2. ما تم تنفيذه حسب المراحل
+
+### المرحلة 0 — التدقيق
+- `docs/feature-mapping-algebaly-emtehani.md`: مقارنة كاملة + قرارات تقنية + أولويات P0/P1/P2.
+- أُضيف قسم حالة التنفيذ في نهاية الملف.
+
+### المرحلة 1/2 — تعدد المستأجرين والأدوار
+- `Assistant` أصبح دورًا مستقلًا مرتبطًا بمدرس عبر `TeachingAssistants`.
+- `TeachingAccess.ResolveAsync` يحل نطاق المدرس/المساعد، و`RequireAsync` تفرض الصلاحية.
+- كل الكيانات التعليمية تحمل `TeacherId`، وكل استعلام مُقيَّد به.
+- لوحة تحكم مستقلة لكل دور:
+  - `TeacherDashboard` (موجود وموسّع).
+  - `StudentDashboard` (موجود وموسّع).
+  - `AssistantDashboard` (جديد).
+  - `AdminDashboard` (موجود وموسّع).
+
+### المرحلة 3 — التعليم
+- **الكورسات:** `TeacherCourses`, `CourseUnits`, `CourseLessons`, `LessonMaterials`, `CourseEnrollments`, `LessonProgresses`.
+- **المجموعات:** `TeachingGroups`, `GroupCourses`, `GroupMemberships`, `GroupSchedules` + طلبات انضمام ونقل/تعليق عضوية.
+- **الحصص:** `GroupSessions` مع حالة محسوبة زمنيًا (`SessionStatusCalculator`) + بدء/إيقاف/إلغاء/إعادة جدولة + توليد من الجدول.
+- **الحضور:** `SessionAttendances`, `AttendanceAuditLogs`, `AttendanceQrTokens` + Present/Absent/Late/Excused + أسباب + تقارير وإحصاءات.
+- **الواجبات:** `HomeworkAssignments`, `HomeworkSubmissions` + موعد تسليم + استهداف مجموعة/كورس + تسليم ملف + تصحيح + ملاحظات + إشعار.
+- **الامتحانات:** لم تُحذف أي ميزة. أُضيفت فقط روابط اختيارية `CourseId`/`GroupId` وواجهات مرتبطة.
+
+### المرحلة 4 — المالية (فصل كامل)
+- **المدرس ↔ المنصة:** `SubscriptionPlans` (سعر/مدة/حدود/Grace/ميزات) + `TeacherSubscriptions` + `PlatformPayments`.
+  - دورة: اختيار خطة → طلب دفع → مراجعة إدارة → تفعيل → Grace → انتهاء.
+  - التجديد/الترقية/التخفيض مسجلة في `RenewedFromSubscriptionId`، ولا تُحذف البيانات عند الانتهاء.
+- **المدرس ↔ الطالب:** `StudentPackages`, `PackageItems`, `PackageEnrollments`, `DiscountCoupon`, `FinancialCharge`, `StudentPayment`, `FinancialAdjustment`.
+  - تسجيل في باقة → مستحقات (كلية/شهرية/لكل حصة مع `DedupeKey`) → دفع كامل/جزئي → تسويات → إلغاء عبر `void` → إيصالات وتقارير.
+- لا تُخلط الإيرادات: ملخص المدرس وتعليم المنصة منفصلان، وتقارير المنصة في `/api/admin/reports/*`.
+
+### المرحلة 5 — المساعدون
+- 21+ صلاحية في `TeachingPermissions`.
+- `AssistantPermissions` + `AssistantGroupAccesses`.
+- كل Endpoint تعليمي يفحص الصلاحية والمجموعة، والمساعد لا يستطيع تجاوز نطاقه حتى لو عدّل الطلب يدويًا.
+- صفحة `TeachingAssistantsPage` لإدارة المساعدين وصلاحياتهم ومجموعاتهم.
+
+### المرحلة 6 — حوكمة الشات
+- أنواع: `TeacherGroup`, `Direct`, `AdminDirect`, `AdminGroup`, `GroupChat`.
+- أوضاع تُفرض خادميًا: `TeacherOnly/Everyone/Moderated` و`AdminOnly/Everyone/Announcement`.
+- رسائل `Moderated` تنتظر موافقة، والحذف ناعم، والتثبيت والكتم والإشراف متاح للمشرفين.
+- `ChatAuditLogs` لكل تغيير، ومركز إشعارات للرسائل الجديدة والمعتمدة.
+- واجهة إدارة كاملة داخل `ChatPage` (وضع/معلّق/أعضاء/بحث/سجل تدقيق).
+- عند إغلاق المحادثة يظهر سبب واضح ويُعطَّل الإرسال، والخادم يرفض الطلب أيضًا.
+
+### المرحلة 7 — الإشعارات والإعلانات
+- `UserNotification`, `NotificationPreference` + مركز إشعارات + جرس + صوت + عداد غير مقروء + تحديد الكل كمقروء.
+- ترقيم صفحات وتفضيلات لكل نوع.
+- إعلانات: منصة/مدرس/مجموعة/كورس/طلاب محددون + جدولة نشر + انتهاء + صورة + تسليم غير مكرر.
+- صفحة `AnnouncementsPage` لكل الأدوار المصرح لها.
+
+### المرحلة 8 — التقارير والتصدير
+- تقارير المدرس: نظرة عامة، حضور، واجبات، مالية، اشتراكات.
+- تقارير الإدارة: مدرسون، اشتراكات، مدفوعات المنصة، نظرة عامة.
+- كل تقرير يدعم التاريخ/الفلاتر/البحث/الترقيم حيث ينطبق.
+- تصدير CSV بترميز UTF-8 مع BOM (يفتح في Excel بالعربية).
+- PDF عبر طباعة المتصفح مع أنماط `@media print` في `frontend/src/index.css`.
+
+### المرحلة 9 — الواجهة والحركات
+- نظام Tokens مركزي (`frontend/src/index.css`, `components/ui.jsx`).
+- خلفيات متحركة، Blobs، Glow، انتقالات، Hover، Skeletons، عدادات، تبويبات، مودالات.
+- احترام `prefers-reduced-motion` عبر `useReducedMotion` وCSS.
+- تنقل كامل لكل دور في `AppShell`، وتوجيه Hash قابل للاستعادة، وحماية صفحات حسب الدور.
+- تحسين الجوال: قائمة جانبية، أزرار لا تخرج عن الشاشة، جداول قابلة للتمرير، مودالات متجاوبة.
+
+### المرحلة 10 — حماية المحتوى
+- `/api/teaching/materials/{id}/access` يصدر رمز HMAC مرتبطًا بالمادة والمستخدم.
+- `/api/teaching/media/{id}?token=` يعيد التحقق من الدور/التسجيل/المجموعة وقت الفتح.
+- انتهاء الاشتراك أو تعطيل المجموعة يوقف الوصول فورًا.
+- `ContentAccessLogs` يسجل الإصدار والفتح وIP.
+- علامة مائية باسم الطالب وكوده على الصور والفيديو، ومنع قائمة السياق/التنزيل.
+- لا تُخزَّن المواد التعليمية المحمية في `wwwroot` العام.
+
+### المرحلة 11 — الفرض والتشغيل
+- حدود الخطة (طلاب/كورسات/مجموعات/مساعدون/تخزين/دقائق فيديو) عبر `TeachingBillingLimits`.
+- Middleware اشتراك: يمنع مساحة العمل قبل تفعيل الباقة المجانية، ويسمح بالقراءة فقط
+  للاشتراك المدفوع المعلّق/المنتهي/الموقوف، ويمنع الكتابة حتى التجديد.
+- فهارس وعلاقات ومفاتيح أجنبية في `TeachingSchema` (SQL Server + PostgreSQL).
+- حذف ناعم حيث يلزم، و`void` للمالية، ومعاملات عند العمليات المركبة.
+- سجلات تدقيق: `TeachingAuditLogs`, `ChatAuditLogs`, `AttendanceAuditLogs`, `AuditEvents`, `ContentAccessLogs`.
+
+---
+
+## 3. قاعدة البيانات
+
+- لا Migrations جديدة؛ يظل النمط: `EnsureCreatedAsync` → `ExamWorkflowSchema` → `TeachingSchema` → `PlatformDataUpgrade`.
+- كل DDL idempotent ويعمل على SQL Server وPostgreSQL (اختبارات PostgreSQL اختيارية ومتخطاة افتراضيًا).
+- جداول جديدة رئيسية:
+  `TeachingAssistants`, `AssistantPermissions`, `AssistantGroupAccesses`,
+  `TeacherCourses`, `CourseUnits`, `CourseLessons`, `LessonMaterials`, `CourseEnrollments`, `LessonProgresses`,
+  `TeachingGroups`, `GroupCourses`, `GroupMemberships`, `GroupSchedules`,
+  `GroupSessions`, `SessionAttendances`, `AttendanceAuditLogs`, `AttendanceQrTokens`,
+  `HomeworkAssignments`, `HomeworkSubmissions`,
+  `StudentPackages`, `PackageItems`, `PackageEnrollments`, `DiscountCoupons`,
+  `FinancialCharges`, `StudentPayments`, `FinancialAdjustments`, `PlatformPayments`,
+  `Announcements`, `NotificationPreferences`, `ContentAccessLogs`, `TeachingAuditLogs`.
+- أعمدة مضافة بأمان: أسعار/حدود الخطط، دورة اشتراك، أوضاع الشات، حقول الحذف/التثبيت/الاعتماد،
+  فئة الإشعار، ربط الإعلان.
+
+---
+
+## 4. Backend — ملفات رئيسية
+
+| الملف | الدور |
+|---|---|
+| `Emtehani.API/TeachingEndpoints.cs` | كورسات، محتوى، تسجيل، مواد، وصول موقّع، نظرة عامة |
+| `Emtehani.API/TeachingGroupEndpoints.cs` | مجموعات، عضويات، جداول، حصص، حضور، QR |
+| `Emtehani.API/TeachingCommunicationEndpoints.cs` | واجبات، إعلانات، إشعارات، تفضيلات |
+| `Emtehani.API/TeachingFinanceEndpoints.cs` | اشتراك المنصة، مدفوعات المدرس↔الطالب، باقات، كوبونات، تقارير، تصدير |
+| `Emtehani.API/ChatGovernanceEndpoints.cs` | أوضاع الشات، حذف/تثبيت/اعتماد/كتم/بحث/تدقيق |
+| `Emtehani.API/AdminReportEndpoints.cs` | تقارير الإدارة وتصدير CSV |
+| `Emtehani.API/TeachingHelpers.cs` | نطاق الوصول، الصلاحيات، التدقيق، الأدوات المشتركة |
+| `Emtehani.Domain/Services/TeachingPermissions.cs` | تعريف الصلاحيات |
+| `Emtehani.Domain/Services/SessionStatusCalculator.cs` | الحالة الزمنية للحصص |
+| `Emtehani.Domain/Entities/TeachingEntities.cs` | كيانات التعليم والمالية والإعلانات |
+| `Emtehani.Infrastructure/Persistence/TeachingSchema.cs` | DDL idempotent |
+| `Emtehani.Infrastructure/Persistence/PlatformDataUpgrade.cs` | ترقية بيانات المنصة والخطط |
+
+عدد مسارات API المضافة/الموجودة: **227** مسارًا عبر ملفات الـAPI.
+
+---
+
+## 5. Frontend — الصفحات والتنقل
+
+صفحات جديدة:
+- `TeachingCoursesPage.jsx` — كورسات/وحدات/دروس/مواد.
+- `TeachingGroupsPage.jsx` — مجموعات/أعضاء/جداول/حصص/حضور/QR.
+- `TeachingFinancePage.jsx` — باقات/مستحقات/مدفوعات/تسويات/كوبونات.
+- `TeachingAssistantsPage.jsx` — مساعدون وصلاحيات.
+- `TeachingReportsPage.jsx` — تقارير المدرس.
+- `AnnouncementsPage.jsx` — إعلانات حسب الدور.
+- `StudentLearningPage.jsx`, `MyCoursesPage.jsx` — تجربة الطالب التعليمية.
+- `StudentFinancePage.jsx` — مستحقات ومدفوعات الطالب.
+- `AdminPlansPage.jsx` — خطط المنصة.
+- `AdminReportsPage.jsx` — تقارير المنصة.
+- `AssistantDashboard.jsx` — لوحة المساعد.
+
+تعديلات أساسية:
+- `App.jsx`: Lazy loading، توجيه حسب الدور، Hash routing، حماية صفحات.
+- `AppShell.jsx`: قوائم تنقل كاملة لكل دور + تسميات.
+- `ChatPage.jsx`: حوكمة كاملة وإدارة مرفقات وقراءة.
+- `SubscriptionPage.jsx`: اختيار خطة وطلب دفع ومتابعة الحالة.
+- `index.css`: أنماط الطباعة، الحركات، احترام تقليل الحركة.
+
+---
+
+## 6. الأدلة والاختبارات
+
+| الاختبار | الأمر | النتيجة |
+|---|---|---|
+| اختبارات Backend | `dotnet test Emtehani.Tests/Emtehani.Tests.csproj` | **84 نجاح / 0 فشل / 5 متخطى** |
+| بناء Backend | `dotnet build` ضمن الاختبارات | نجاح |
+| اختبارات Frontend | `npm run test:unit` | **31/31 نجاح** |
+| بناء Frontend | `npm run build` | نجاح (مع فحص CSP) |
+| اختبارات تكامل جديدة | `TeachingModuleTests.cs` | 5/5 نجاح |
+
+تغطية اختبارات جديدة:
+- إنشاء كورس/مجموعة/وحدة/درس/مادة + إصدار رمز وصول + علامة مائية + انعكاس النظرة العامة.
+- عزل الكورسات بين مدرسين.
+- فرض صلاحيات المساعد على كل طلب.
+- تغيير وضع الشات ورفض الوضع غير الصالح.
+- دورة اشتراك مدفوع كاملة حتى موافقة الإدارة.
+
+---
+
+## 7. قرارات تقنية موثقة
+
+1. **الإضافات فقط** لنظام الامتحانات؛ لا حذف أو تعطيل.
+2. **DDL idempotent** بدل Migrations للحفاظ على توافق الإنتاج الحالي.
+3. **الحالة الزمنية للحصص محسوبة** من الوقت الحقيقي + الإلغاء/البدء/الانتهاء.
+4. **المالية منفصلة** على مستوى الكيانات والمسارات والتقارير.
+5. **الصلاحيات تُفرض في الخادم**؛ الواجهة إرشادية فقط.
+6. **رموز محتوى قصيرة العمر** بدل كشف روابط التخزين.
+7. **Polling** للإشعارات والشات (كل 4–12 ثانية) لتفادي تعقيد SignalR في الاستضافة الحالية.
+8. **CSV + BOM** لتصدير عربي متوافق مع Excel، وطباعة PDF من المتصفح.
+9. **توجيه بالحالة + Hash** بدل إضافة React Router (حفاظًا على بنية المشروع).
+
+---
+
+## 7.1 مراجعة الأداء
+
+- الواجهة مقسّمة بـ Lazy loading؛ كل صفحة جديدة تُحمَّل عند الحاجة.
+- الحزمة الأساسية بعد البناء ≈ **511KB** (≈156KB gzip)، وباقي الصفحات 12–45KB لكل صفحة.
+  لا يوجد انفجار في الحجم، لكن الحزمة الأساسية أكبر من حد 500KB الذي ينبه إليه Vite.
+- الحركات تُعطَّل مع `prefers-reduced-motion`.
+- الاستعلامات الثقيلة (تقارير/قوائم) تستخدم `AsNoTracking` و`Take` وفهارس على `TeacherId`/`GroupId`/`StudentId`.
+- Polling: الشات 4 ثوانٍ داخل المحادثة النشطة و12 ثانية للقائمة؛ الإشعارات تعتمد دورة مماثلة.
+  هذا مقبول للاستضافة الحالية، ويُنصح بـ SignalR عند زيادة المستخدمين.
+
+## 7.2 مراجعة الـAPI والواجهة
+
+- 227 مسار API، كل مسار تعليمي يمر عبر `RequireAuthorization` + سياسة `api` + فحص نطاق/صلاحية.
+- لا توجد استعلامات SQL مبنية يدويًا من مدخلات.
+- كل النماذج تُتحقق من الطول/النوع، والملفات تتحقق من التوقيع الفعلي (Magic Bytes).
+- الواجهة لا تعتمد عليها للحماية: كل إجراء حساس يُعاد التحقق منه في الخادم.
+- الأخطاء تُعاد كـ JSON عربي موحد مع `traceId`، ولا تُظهر Stack Trace.
+- الواجهة تمسك أخطاء الطلبات وتعرض رسائل قابلة للتنفيذ، وتعيد المحاولة حيث يلزم.
+
+## 8. القيود الصريحة (لم يُدَّع إنجازها)
+
+- **النشر:** لم يُنفَّذ نشر Backend/Frontend في هذه الجلسة. تغييرات هذه الجلسة محلية ومبنية فقط.
+- **منع تصوير الشاشة:** غير ممكن تقنيًا بنسبة 100%؛ الموجود علامة مائية + رموز + تعطيل التقاط الشاشة في المتصفح.
+- **HLS/DRM:** غير منفذ؛ الفيديو يعمل من رابطه الأصلي بعد التحقق.
+- **قياس التخزين الفعلي:** حدود الخطط معرّفة لكن لا توجد مهمة قياس تلقائية بعد.
+- **SignalR:** غير مستخدم؛ الشات والإشعارات تعتمد Polling.
+- **Practice Activities / Lesson Q&A:** مؤجلة (P2) حسب خريطة الميزات.
+- **اختبارات PostgreSQL:** موجودة لكنها تُتخطى بدون قاعدة بيانات اختبار.
+- **اختبار المتصفح اليدوي:** لم يُجرَ جولة يدوية كاملة على كل المقاسات؛ بناء الواجهة واختبارات الوحدة ناجحة، ويُنصح بجولة يدوية بعد النشر.
+
+---
+
+## 9. خطوات النشر (لم تُنفَّذ)
+
+### Backend — MonsterASP
+1. بناء ونشر `Emtehani.API` (MSDeploy/Publish).
+2. **لا تستبدل `appsettings.json` / `appsettings.Production.json`** أثناء النشر.
+3. اضبط الأسرار عبر متغيرات بيئة/إعدادات الاستضافة بعد تدويرها (راجع `docs/security-audit.md`).
+4. تحقق من `/health` و`/api` بعد النشر.
+5. تحقق من تشغيل Bootstrap المخطط مرة واحدة.
+
+### Frontend — Vercel
+1. ادفع التغييرات إلى GitHub (بدون أسرار).
+2. اترك تكامل Git في Vercel يبني وينشر تلقائيًا.
+3. تأكد من `VITE_API_URL` في إعدادات Vercel.
+4. تحقق من CSP والاتصال بالـAPI بعد النشر.
+
+### تحقق ما بعد النشر
+- تسجيل دخول مدرس جديد → يظهر طلب اختيار الباقة.
+- اختيار الباقة المجانية → تُفتح مساحة العمل.
+- إنشاء كورس/مجموعة/حصة/واجب.
+- فتح مادة كطالب → يعمل الرابط الموقّع وتظهر العلامة المائية.
+- إرسال رسالة في شات مغلق → تُرفض من الخادم.
+- طلب اشتراك مدفوع → قراءة فقط حتى موافقة الإدارة.
+
+---
+
+## 10. مفتاح الملفات المرجعية
+
+- خريطة الميزات: `docs/feature-mapping-algebaly-emtehani.md`
+- التدقيق الأمني: `docs/security-audit.md`
+- نشر MonsterASP: `docs/monsterasp-deployment.md`
+- جاهزية الإنتاج: `docs/monsterasp-production-readiness.md`
+- اختبارات الوحدة/التكامل: `backend/Emtehani.Tests/`

@@ -6,6 +6,7 @@ import {
   BarChart3,
   BookOpen,
   BookOpenCheck,
+  CalendarDays,
   ClipboardCheck,
   CreditCard,
   ExternalLink,
@@ -15,14 +16,17 @@ import {
   LayoutDashboard,
   LifeBuoy,
   LogOut,
+  Megaphone,
   Menu,
   MessageCircle,
   Moon,
   PlusCircle,
   ShieldCheck,
   Sun,
+  UserCog,
   UserRound,
   Users,
+  Wallet,
   X,
 } from 'lucide-react';
 import { Avatar, cn, IconButton, Logo, StatusChip } from './ui';
@@ -32,12 +36,18 @@ import SessionCountdown from './SessionCountdown';
 const teacherNav = [
   { key: 'dashboard', label: 'مركز التحكم', shortLabel: 'المركز', icon: LayoutDashboard },
   { key: 'chat', label: 'المحادثات', shortLabel: 'المحادثات', icon: MessageCircle },
+  { key: 'groups', label: 'المجموعات والحصص', shortLabel: 'المجموعات', icon: CalendarDays },
+  { key: 'courses', label: 'الكورسات والمحتوى', shortLabel: 'الكورسات', icon: BookOpen },
+  { key: 'students', label: 'إدارة الطلاب', shortLabel: 'الطلاب', icon: Users },
   { key: 'exams', label: 'الامتحانات', shortLabel: 'اختبارات', icon: FileText },
   { key: 'create', label: 'إنشاء امتحان', shortLabel: 'إنشاء', icon: PlusCircle },
   { key: 'results', label: 'النتائج', icon: BarChart3 },
   { key: 'essays', label: 'مراجعة المقالات', icon: ClipboardCheck },
   { key: 'requests', label: 'طلبات الطلاب', icon: UserRound },
-  { key: 'students', label: 'إدارة الطلاب', shortLabel: 'الطلاب', icon: Users },
+  { key: 'finance', label: 'المالية', icon: Wallet },
+  { key: 'assistants', label: 'المساعدون', icon: UserCog },
+  { key: 'reports', label: 'التقارير', icon: BarChart3 },
+  { key: 'announcements', label: 'الإعلانات', icon: Megaphone },
   { key: 'teacher-profile', label: 'صفحتي التعريفية', shortLabel: 'تعريفي', icon: UserRound },
   { key: 'subscription', label: 'الاشتراك', icon: CreditCard },
   { key: 'audit', label: 'سجل النشاط', icon: History },
@@ -46,9 +56,13 @@ const teacherNav = [
 const studentNav = [
   { key: 'dashboard', label: 'نظرة عامة', shortLabel: 'الرئيسية', icon: LayoutDashboard },
   { key: 'chat', label: 'المحادثات', shortLabel: 'المحادثات', icon: MessageCircle },
+  { key: 'learning', label: 'تعلّمي', shortLabel: 'تعلّمي', icon: BookOpenCheck },
+  { key: 'courses', label: 'كورساتي', shortLabel: 'كورساتي', icon: BookOpen },
   { key: 'available', label: 'الامتحانات المتاحة', shortLabel: 'المتاحة', icon: BookOpenCheck },
   { key: 'results', label: 'نتائجي', icon: BarChart3 },
   { key: 'teachers', label: 'المدرسون', shortLabel: 'المدرسون', icon: GraduationCap },
+  { key: 'my-finance', label: 'مدفوعاتي', shortLabel: 'المدفوعات', icon: Wallet },
+  { key: 'announcements', label: 'الإعلانات', icon: Megaphone },
   { key: 'profile', label: 'ملفي الأكاديمي', shortLabel: 'ملفي', icon: UserRound },
 ];
 
@@ -56,6 +70,18 @@ const adminNav = [
   { key: 'admin', label: 'لوحة الإدارة', shortLabel: 'الإدارة', icon: ShieldCheck },
   { key: 'chat', label: 'المحادثات', shortLabel: 'المحادثات', icon: MessageCircle },
   { key: 'admin-teachers', label: 'المدرسون والاشتراكات', shortLabel: 'المدرسون', icon: Users },
+  { key: 'plans', label: 'خطط الاشتراك', shortLabel: 'الخطط', icon: CreditCard },
+  { key: 'admin-reports', label: 'التقارير والإحصاءات', shortLabel: 'التقارير', icon: BarChart3 },
+  { key: 'announcements', label: 'إعلانات المنصة', shortLabel: 'الإعلانات', icon: Megaphone },
+];
+
+const assistantNav = [
+  { key: 'dashboard', label: 'مركز المساعد', shortLabel: 'الرئيسية', icon: LayoutDashboard },
+  { key: 'chat', label: 'المحادثات', shortLabel: 'المحادثات', icon: MessageCircle },
+  { key: 'groups', label: 'المجموعات والحصص', shortLabel: 'المجموعات', icon: CalendarDays },
+  { key: 'courses', label: 'الكورسات والمحتوى', shortLabel: 'الكورسات', icon: BookOpen },
+  { key: 'reports', label: 'التقارير', icon: BarChart3 },
+  { key: 'announcements', label: 'الإعلانات', icon: Megaphone },
 ];
 
 const pageMeta = {
@@ -68,6 +94,16 @@ const pageMeta = {
   essays: { title: 'مراجعة المقالات', eyebrow: 'تصحيح يدوي' },
   requests: { title: 'طلبات الطلاب', eyebrow: 'إدارة التسجيل' },
   students: { title: 'إدارة الطلاب', eyebrow: 'متابعة الطلاب' },
+  courses: { title: 'الكورسات والمحتوى', eyebrow: 'المحتوى التعليمي' },
+  groups: { title: 'المجموعات والحصص', eyebrow: 'التنظيم والحضور' },
+  finance: { title: 'المالية', eyebrow: 'مدفوعات الطلاب' },
+  assistants: { title: 'المساعدون', eyebrow: 'الصلاحيات والمجموعات' },
+  reports: { title: 'التقارير', eyebrow: 'تحليلات وتصدير' },
+  announcements: { title: 'الإعلانات', eyebrow: 'التواصل العام' },
+  learning: { title: 'تعلّمي', eyebrow: 'رحلتك التعليمية' },
+  'my-finance': { title: 'مدفوعاتي', eyebrow: 'الحساب المالي' },
+  plans: { title: 'خطط الاشتراك', eyebrow: 'اشتراكات المدرسين' },
+  'admin-reports': { title: 'التقارير والإحصاءات', eyebrow: 'إشراف المنصة' },
   'teacher-profile': { title: 'صفحتي التعريفية', eyebrow: 'ملفي العام' },
   teachers: { title: 'المدرسون', eyebrow: 'اختيار المدرس' },
   profile: { title: 'ملفي الأكاديمي', eyebrow: 'بياناتي وسجلي' },
@@ -132,7 +168,7 @@ function SidebarContent({ user, nav, activePage, onNavigate, onLogout, onClose, 
           <p className="truncate text-[13px] font-bold text-ink">{user?.fullName || 'مستخدم امتحاني'}</p>
           <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted">
             <UserRound size={11} />
-            {user?.role === 'Teacher' ? 'حساب مدرس' : user?.role === 'Admin' ? 'حساب إدارة' : 'حساب طالب'}
+            {user?.role === 'Teacher' ? 'حساب مدرس' : user?.role === 'Admin' ? 'حساب إدارة' : user?.role === 'Assistant' ? 'حساب مساعد' : 'حساب طالب'}
           </div>
         </div>
         <StatusChip status="Active" showIcon={false} className="px-2 py-1 text-[10px]" />
@@ -180,7 +216,13 @@ export default function AppShell({ user, page, activePage, title, subtitle, chil
   const [mobileOpen, setMobileOpen] = useState(false);
   const [chatUnread, setChatUnread] = useState(0);
   const mobileNavRef = useRef(null);
-  const nav = user?.role === 'Teacher' ? teacherNav : user?.role === 'Admin' ? adminNav : studentNav;
+  const nav = user?.role === 'Teacher'
+    ? teacherNav
+    : user?.role === 'Admin'
+      ? adminNav
+      : user?.role === 'Assistant'
+        ? assistantNav
+        : studentNav;
   const meta = pageMeta[page] || pageMeta.dashboard;
   const visibleNav = nav.slice(0, 4);
   useFocusTrap(mobileOpen, mobileNavRef, () => setMobileOpen(false));
@@ -255,7 +297,7 @@ export default function AppShell({ user, page, activePage, title, subtitle, chil
                 <Avatar name={user?.fullName} size="sm" />
                 <div className="hidden min-w-0 sm:block">
                   <p className="max-w-[120px] truncate text-[11.5px] font-bold leading-tight text-ink">{user?.fullName}</p>
-                  <p className="text-[10px] text-muted">{user?.role === 'Teacher' ? 'مدرس' : user?.role === 'Admin' ? 'إدارة' : 'طالب'}</p>
+                  <p className="text-[10px] text-muted">{user?.role === 'Teacher' ? 'مدرس' : user?.role === 'Admin' ? 'إدارة' : user?.role === 'Assistant' ? 'مساعد' : 'طالب'}</p>
                 </div>
                 <button type="button" onClick={onLogout} aria-label="تسجيل الخروج" title="تسجيل الخروج" className="ms-1 text-subtle transition hover:text-danger"><LogOut size={14} /></button>
               </div>

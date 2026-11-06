@@ -29,6 +29,18 @@ const TeacherPortfolioPage = lazy(() => import('./pages/TeacherPortfolioPage'));
 const SubscriptionPage = lazy(() => import('./pages/SubscriptionPage'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 const ChatPage = lazy(() => import('./pages/ChatPage'));
+const TeachingCoursesPage = lazy(() => import('./pages/TeachingCoursesPage'));
+const TeachingGroupsPage = lazy(() => import('./pages/TeachingGroupsPage'));
+const TeachingFinancePage = lazy(() => import('./pages/TeachingFinancePage'));
+const TeachingAssistantsPage = lazy(() => import('./pages/TeachingAssistantsPage'));
+const TeachingReportsPage = lazy(() => import('./pages/TeachingReportsPage'));
+const AnnouncementsPage = lazy(() => import('./pages/AnnouncementsPage'));
+const StudentLearningPage = lazy(() => import('./pages/StudentLearningPage'));
+const StudentFinancePage = lazy(() => import('./pages/StudentFinancePage'));
+const MyCoursesPage = lazy(() => import('./pages/MyCoursesPage'));
+const AssistantDashboard = lazy(() => import('./pages/AssistantDashboard'));
+const AdminPlansPage = lazy(() => import('./pages/AdminPlansPage'));
+const AdminReportsPage = lazy(() => import('./pages/AdminReportsPage'));
 import { authUserFromResponse, clearAuth, getStoredAuth, request, storeAuth, storeSession } from './lib/api';
 import { installWebMcpTools } from './lib/webmcp';
 
@@ -41,6 +53,12 @@ const teacherTitles = {
   essays: 'مراجعة المقالات',
   requests: 'طلبات الطلاب',
   students: 'إدارة الطلاب',
+  courses: 'الكورسات والمحتوى',
+  groups: 'المجموعات والحصص',
+  finance: 'المالية',
+  assistants: 'المساعدون',
+  announcements: 'الإعلانات',
+  reports: 'التقارير',
   'teacher-profile': 'صفحتي التعريفية',
   subscription: 'الاشتراك',
   audit: 'سجل النشاط',
@@ -51,10 +69,14 @@ const teacherTitles = {
 
 const studentTitles = {
   dashboard: 'نظرة عامة',
+  learning: 'تعلّمي',
+  courses: 'كورساتي',
   available: 'الامتحانات المتاحة',
   results: 'نتائجي',
   teachers: 'المدرسون',
   profile: 'ملفي الأكاديمي',
+  'my-finance': 'مدفوعاتي',
+  announcements: 'الإعلانات',
   chat: 'المحادثات',
   review: 'مراجعة المحاولة',
 };
@@ -63,6 +85,18 @@ const adminTitles = {
   dashboard: 'لوحة الإدارة',
   admin: 'لوحة الإدارة',
   'admin-teachers': 'المدرسون والاشتراكات',
+  plans: 'خطط الاشتراك',
+  'admin-reports': 'التقارير والإحصاءات',
+  announcements: 'إعلانات المنصة',
+  chat: 'المحادثات',
+};
+
+const assistantTitles = {
+  dashboard: 'مركز المساعد',
+  groups: 'المجموعات والحصص',
+  courses: 'الكورسات والمحتوى',
+  reports: 'التقارير',
+  announcements: 'الإعلانات',
   chat: 'المحادثات',
 };
 
@@ -73,9 +107,10 @@ const activePages = {
 };
 
 const restorablePages = {
-  Teacher: new Set(['dashboard', 'exams', 'results', 'essays', 'requests', 'students', 'teacher-profile', 'subscription', 'audit', 'chat']),
-  Student: new Set(['dashboard', 'available', 'results', 'teachers', 'profile', 'chat']),
-  Admin: new Set(['dashboard', 'chat']),
+  Teacher: new Set(['dashboard', 'exams', 'results', 'essays', 'requests', 'students', 'courses', 'groups', 'finance', 'assistants', 'announcements', 'reports', 'teacher-profile', 'subscription', 'audit', 'chat']),
+  Student: new Set(['dashboard', 'learning', 'courses', 'available', 'results', 'teachers', 'profile', 'my-finance', 'announcements', 'chat']),
+  Admin: new Set(['dashboard', 'admin', 'admin-teachers', 'plans', 'admin-reports', 'announcements', 'chat']),
+  Assistant: new Set(['dashboard', 'courses', 'groups', 'reports', 'announcements', 'chat']),
 };
 
 const pageHashes = {
@@ -85,6 +120,16 @@ const pageHashes = {
   essays: '/essays',
   requests: '/requests',
   students: '/students',
+  courses: '/courses',
+  groups: '/groups',
+  finance: '/finance',
+  assistants: '/assistants',
+  announcements: '/announcements',
+  reports: '/reports',
+  learning: '/learning',
+  'my-finance': '/my-finance',
+  plans: '/plans',
+  'admin-reports': '/admin-reports',
   'teacher-profile': '/teacher-profile',
   subscription: '/subscription',
   audit: '/audit',
@@ -206,7 +251,7 @@ export default function App() {
         storeSession(me.sessionExpiresAtUtc, me.serverUtc);
         setPage((current) => {
           if (current === 'portfolio') return current;
-          if (nextUser.role === 'Teacher' && nextUser.subscriptionStatus !== 'Confirmed') return 'subscription';
+          if (nextUser.role === 'Teacher' && !nextUser.subscriptionStatus) return 'subscription';
           return pageFromHashFor(nextUser) || storedPageFor(nextUser) || 'dashboard';
         });
       })
@@ -261,7 +306,7 @@ export default function App() {
   }, [page, user, teacherSlug]);
 
   useEffect(() => {
-    const titles = user?.role === 'Admin' ? adminTitles : user?.role === 'Teacher' ? teacherTitles : studentTitles;
+    const titles = user?.role === 'Admin' ? adminTitles : user?.role === 'Teacher' ? teacherTitles : user?.role === 'Assistant' ? assistantTitles : studentTitles;
     const currentTitle = titles[page] || 'امتحاني';
     document.title = page === 'portfolio'
       ? 'Ahmed Gbreel · Full Stack Developer'
@@ -307,7 +352,7 @@ export default function App() {
     setToken(data.token);
     setUser(nextUser);
     setAuthNotice('');
-    setPage(nextUser.role === 'Teacher' && nextUser.subscriptionStatus !== 'Confirmed' ? 'subscription' : 'dashboard');
+    setPage(nextUser.role === 'Teacher' && !nextUser.subscriptionStatus ? 'subscription' : 'dashboard');
     setAuthMode('login');
     return { registered: false };
   }
@@ -351,11 +396,13 @@ export default function App() {
 
   function navigate(next) {
     if (next === 'portfolio') { openPortfolio(); return; }
-    if (user?.role === 'Teacher' && user?.subscriptionStatus !== 'Confirmed' && next !== 'subscription') {
+    if (user?.role === 'Teacher' && !user?.subscriptionStatus && next !== 'subscription' && next !== 'portfolio') {
       setPage('subscription');
       return;
     }
-    if ((next === 'admin' || next === 'admin-teachers') && user?.role !== 'Admin') { setPage('dashboard'); return; }
+    if (['admin', 'admin-teachers', 'plans', 'admin-reports'].includes(next) && user?.role !== 'Admin') { setPage('dashboard'); return; }
+    if (['finance', 'assistants', 'students', 'subscription', 'essays', 'requests', 'teacher-profile'].includes(next) && user?.role !== 'Teacher') { setPage('dashboard'); return; }
+    if (['learning', 'my-finance', 'available', 'profile'].includes(next) && user?.role !== 'Student') { setPage('dashboard'); return; }
     if (next === 'exam-detail' && !selectedExam) { setPage('exams'); return; }
     if (next === 'lobby' && !joined) { setPage('dashboard'); return; }
     if (next === 'take' && !paper) { setPage('dashboard'); return; }
@@ -514,9 +561,12 @@ export default function App() {
 
   const isTeacher = user.role === 'Teacher';
   const isAdmin = user.role === 'Admin';
-  const teacherPending = isTeacher && user.subscriptionStatus !== 'Confirmed';
+  const isAssistant = user.role === 'Assistant';
+  const isStudent = user.role === 'Student';
+  const teacherPending = isTeacher && !user.subscriptionStatus;
   const effectivePage = teacherPending ? 'subscription' : page;
-  const title = (isAdmin ? adminTitles : isTeacher ? teacherTitles : studentTitles)[effectivePage] || 'امتحاني';
+  const titlesForRole = isAdmin ? adminTitles : isTeacher ? teacherTitles : isAssistant ? assistantTitles : studentTitles;
+  const title = titlesForRole[effectivePage] || 'امتحاني';
   const activePage = activePages[effectivePage] || effectivePage;
 
   let content;
@@ -524,13 +574,37 @@ export default function App() {
     content = <SubscriptionPage token={token} onConfirmed={updateSubscription} />;
   } else if (page === 'chat') {
     content = <ChatPage token={token} user={user} />;
+  } else if (isAdmin && page === 'plans') {
+    content = <AdminPlansPage token={token} />;
+  } else if (isAdmin && page === 'admin-reports') {
+    content = <AdminReportsPage token={token} />;
+  } else if (page === 'announcements') {
+    content = <AnnouncementsPage token={token} role={isAdmin ? 'Admin' : isStudent ? 'Student' : 'Teacher'} />;
   } else if (isAdmin) {
     content = <AdminDashboard token={token} onNavigate={navigate} />;
   } else if (page === 'dashboard') {
-    content = isTeacher
-      ? <TeacherDashboard token={token} user={user} onNavigate={navigate} onCreate={() => setPage('create')} onOpenExam={openExam} />
-      : <StudentDashboard token={token} user={user} onBrowse={() => setPage('available')} onEnter={joinedExam} onViewResults={() => setPage('results')} onOpenReview={(id) => openReview(id, 'dashboard')} onProfileUpdated={updateEducation} />;
-  } else if (page === 'available' && !isTeacher) {
+    content = isAssistant
+      ? <AssistantDashboard token={token} user={user} onNavigate={navigate} />
+      : isTeacher
+        ? <TeacherDashboard token={token} user={user} onNavigate={navigate} onCreate={() => setPage('create')} onOpenExam={openExam} />
+        : <StudentDashboard token={token} user={user} onBrowse={() => setPage('available')} onEnter={joinedExam} onViewResults={() => setPage('results')} onOpenReview={(id) => openReview(id, 'dashboard')} onProfileUpdated={updateEducation} />;
+  } else if (page === 'courses') {
+    content = isStudent
+      ? <MyCoursesPage token={token} />
+      : <TeachingCoursesPage token={token} />;
+  } else if (page === 'groups' && (isTeacher || isAssistant)) {
+    content = <TeachingGroupsPage token={token} onOpenChat={() => setPage('chat')} />;
+  } else if (page === 'learning' && isStudent) {
+    content = <StudentLearningPage token={token} onOpenChat={() => setPage('chat')} />;
+  } else if (page === 'my-finance' && isStudent) {
+    content = <StudentFinancePage token={token} />;
+  } else if (page === 'finance' && isTeacher) {
+    content = <TeachingFinancePage token={token} />;
+  } else if (page === 'assistants' && isTeacher) {
+    content = <TeachingAssistantsPage token={token} />;
+  } else if (page === 'reports' && (isTeacher || isAssistant)) {
+    content = <TeachingReportsPage token={token} />;
+  } else if (page === 'available' && isStudent) {
     content = <AvailableExamsPage token={token} onEnter={joinedExam} />;
   } else if (page === 'exams') {
     content = <ExamsPage token={token} onOpenExam={openExam} onCreate={() => setPage('create')} />;
@@ -548,9 +622,9 @@ export default function App() {
     content = <TeacherStudentsPage token={token} />;
   } else if (page === 'teacher-profile' && isTeacher) {
     content = <TeacherProfilePage token={token} />;
-  } else if (page === 'teachers' && !isTeacher) {
+  } else if (page === 'teachers' && isStudent) {
     content = <TeachersPage token={token} />;
-  } else if (page === 'profile' && !isTeacher) {
+  } else if (page === 'profile' && isStudent) {
     content = <StudentProfilePage token={token} onProfileUpdated={updateEducation} />;
   } else if (page === 'subscription' && isTeacher) {
     content = <SubscriptionPage token={token} onConfirmed={updateSubscription} />;
@@ -561,9 +635,11 @@ export default function App() {
   } else if (page === 'essay-review' && reviewId) {
     content = <EssayReviewPage token={token} submissionId={reviewId} onBack={() => setPage('essays')} />;
   } else {
-    content = isTeacher
-      ? <TeacherDashboard token={token} user={user} onNavigate={navigate} onCreate={() => setPage('create')} onOpenExam={openExam} />
-      : <StudentDashboard token={token} user={user} onBrowse={() => setPage('available')} onEnter={joinedExam} onViewResults={() => setPage('results')} onOpenReview={(id) => openReview(id, 'dashboard')} onProfileUpdated={updateEducation} />;
+    content = isAssistant
+      ? <AssistantDashboard token={token} user={user} onNavigate={navigate} />
+      : isTeacher
+        ? <TeacherDashboard token={token} user={user} onNavigate={navigate} onCreate={() => setPage('create')} onOpenExam={openExam} />
+        : <StudentDashboard token={token} user={user} onBrowse={() => setPage('available')} onEnter={joinedExam} onViewResults={() => setPage('results')} onOpenReview={(id) => openReview(id, 'dashboard')} onProfileUpdated={updateEducation} />;
   }
 
   return (

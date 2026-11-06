@@ -40,6 +40,7 @@ public class ApiFactory : WebApplicationFactory<Program>
             {
                 ["FrontendOrigin"] = "http://localhost:5173",
                 ["PublicApiUrl"] = "http://localhost:5000",
+                ["ConnectionStrings:DefaultConnection"] = "Server=(localdb)\\MSSQLLocalDB;Database=EmtehaniTestsConfigurationOnly;Trusted_Connection=True;TrustServerCertificate=True;Connect Timeout=2",
                 ["Auth:AutoConfirmWithoutSmtp"] = "true",
                 ["Email:SmtpHost"] = "",
                 ["Email:Username"] = "",
@@ -92,9 +93,9 @@ public class ApiFactory : WebApplicationFactory<Program>
 
 public sealed class FixedTokenService(string jwtKey) : Emtehani.Application.Abstractions.ITokenService
 {
-    public (string Token, DateTime ExpiresAtUtc) Create(Emtehani.Domain.Entities.AppUser user)
+    public (string Token, DateTime ExpiresAtUtc) Create(Emtehani.Domain.Entities.AppUser user, DateTime sessionExpiresAtUtc)
     {
-        var expiry = DateTime.UtcNow.AddHours(8);
+        var expiry = sessionExpiresAtUtc;
         var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
         var claims = new[]
         {
@@ -141,12 +142,12 @@ public sealed class RegistrationTests(ApiFactory factory) : IClassFixture<ApiFac
         {
             fullName = "مدرس تسجيل مفتوح",
             email,
-            password = "Passw0rd!",
+            password = "Passw0rd!2026",
             role = "Teacher"
         });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var login = await client.PostAsJsonAsync("/api/auth/login", new { email, password = "Passw0rd!" });
+        var login = await client.PostAsJsonAsync("/api/auth/login", new { email, password = "Passw0rd!2026" });
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         var auth = JsonNode.Parse(await login.Content.ReadAsStringAsync());
         Assert.Equal("Teacher", auth!["role"]!.GetValue<string>());
@@ -162,7 +163,7 @@ public sealed class RegistrationTests(ApiFactory factory) : IClassFixture<ApiFac
         {
             fullName = "مدرس إنتاج",
             email = $"teacher-production-{Guid.NewGuid():N}@example.test",
-            password = "Passw0rd!",
+            password = "Passw0rd!2026",
             role = "Teacher"
         });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -190,28 +191,71 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
 
     private static Guid GuidValue(JsonNode? node) => Guid.Parse(node!.GetValue<string>());
 
-    private async Task<(HttpClient Client, JsonNode Auth)> RegisterAndLogin(string email, string role, string name, string? stage = null, string? grade = null)
+    private Guid? _registrationTeacherId;
+
+    private static string TestPhone(string prefix) =>
+        prefix + Random.Shared.Next(100000000, 999999999).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    internal static string EnsureFourPartName(string name)
     {
-        var client = factory.CreateClient();
+        var parts = (name ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        var fillers = new[] { "طالب", "مميز", "أول", "ثاني" };
+        var filler = 0;
+        while (parts.Count < 4) parts.Add(fillers[filler++ % fillers.Length]);
+        return string.Join(' ', parts.Take(8));
+    }
+
+    private async Task<Guid> GetRegistrationTeacherId()
+    {
+        if (_registrationTeacherId is Guid cached) return cached;
+        var (_, auth) = await RegisterAndLogin(Email("registration-teacher"), "Teacher", "مدرس التسجيل");
+        _registrationTeacherId = GuidValue(auth["userId"]);
+        return _registrationTeacherId.Value;
+    }
+
+    private async Task<(HttpClient Client, JsonNode Auth)> RegisterAndLogin(
+        string email, string role, string name, string? stage = null, string? grade = null, Guid? teacherId = null)
+    {        var client = factory.CreateClient();
         var isStudent = role == "Student";
-        var register = await client.PostAsJsonAsync("/api/auth/register", new
+        var selectedTeacherId = isStudent ? teacherId ?? await GetRegistrationTeacherId() : (Guid?)null;
+        var displayName = isStudent ? EnsureFourPartName(name) : name;
+        HttpResponseMessage register;
+        for (var attempt = 0; ; attempt++)
         {
-            fullName = name,
-            email,
-            password = "Passw0rd!",
-            role,
-            stage = isStudent ? stage ?? DefaultStage : null,
-            grade = isStudent ? grade ?? DefaultGrade : null
-        });
+            register = await client.PostAsJsonAsync("/api/auth/register", new
+            {
+                fullName = displayName,
+                email,
+                password = "Passw0rd!2026",
+                role,
+                stage = isStudent ? stage ?? DefaultStage : null,
+                grade = isStudent ? grade ?? DefaultGrade : null,
+                studentPhone = isStudent ? TestPhone("01") : null,
+                parentPhone = isStudent ? TestPhone("02") : null,
+                teacherCount = isStudent ? 20 : (int?)null,
+                teacherIds = isStudent ? new[] { selectedTeacherId!.Value } : null
+            });
+            if (register.StatusCode != HttpStatusCode.Conflict || attempt >= 5) break;
+            // A previous test in the shared database may have used the same display name.
+            // Use letters only: student names may not contain digits.
+            var suffix = new string(Guid.NewGuid().ToString("N").Where(char.IsLetter).Take(4).ToArray());
+            displayName = $"{EnsureFourPartName(name)} {(suffix.Length >= 2 ? suffix : "مم")}";
+            if (displayName.Length > 120) displayName = EnsureFourPartName(name);
+        }
         Assert.True(register.StatusCode == HttpStatusCode.OK, $"{register.StatusCode}: {await register.Content.ReadAsStringAsync()}");
-        var login = await client.PostAsJsonAsync("/api/auth/login", new { email, password = "Passw0rd!" });
+        var login = await client.PostAsJsonAsync("/api/auth/login", new { email, password = "Passw0rd!2026" });
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         var auth = await ReadJson(login);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth["token"]!.GetValue<string>());
+        if (role == "Teacher")
+        {
+            var confirm = await client.PostAsJsonAsync("/api/teacher/subscription", new { planCode = "free" });
+            Assert.True(confirm.StatusCode == HttpStatusCode.OK, $"Subscription confirm failed: {confirm.StatusCode} {await confirm.Content.ReadAsStringAsync()}");
+        }
         return (client, auth);
     }
 
-    private async Task<Guid> CreatePublishedExam(HttpClient teacher, string stage = DefaultStage, string grade = DefaultGrade)
+    private async Task<Guid> CreatePublishedExam(HttpClient teacher, string stage = DefaultStage, string grade = DefaultGrade, string? resultsReleaseMode = null)
     {
         var create = await teacher.PostAsJsonAsync("/api/exams", new
         {
@@ -220,6 +264,7 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
             durationMinutes = 30,
             maxAttempts = 1,
             allowResumeAfterFocusLoss = true,
+            resultsReleaseMode,
             stage,
             grade,
             questions = new object[]
@@ -289,6 +334,59 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
         var submit = await student.PostAsJsonAsync($"/api/submissions/{submissionId}/submit", new { answers, focusLossDetected = false });
         Assert.Equal(HttpStatusCode.OK, submit.StatusCode);
     }
+
+    private static string CreateExpiredToken(Guid userId, string role)
+    {
+        var handler = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler();
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
+            new Claim(ClaimTypes.Name, "Expired student"),
+            new Claim(ClaimTypes.Email, $"expired-{userId:N}@example.test"),
+            new Claim(ClaimTypes.Role, role)
+        };
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(ApiFactory.TestJwtKey));
+        var token = handler.CreateToken(new Microsoft.IdentityModel.Tokens.SecurityTokenDescriptor
+        {
+            Subject = new ClaimsIdentity(claims),
+            Issuer = "Emtehani",
+            Audience = "Emtehani.Client",
+            NotBefore = DateTime.UtcNow.AddMinutes(-30),
+            Expires = DateTime.UtcNow.AddMinutes(-10),
+            SigningCredentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256)
+        });
+        return handler.WriteToken(token);
+    }
+
+    private static async Task<Guid> StudentId(HttpClient student)
+    {
+        var me = await student.GetFromJsonAsync<JsonNode>("/api/auth/me");
+        return GuidValue(me!["id"]);
+    }
+
+    private static async Task<Guid> CreateEssayExam(HttpClient teacher, string? resultsReleaseMode)
+    {
+        var create = await teacher.PostAsJsonAsync("/api/exams", new
+        {
+            title = $"مقالي {Guid.NewGuid():N}",
+            description = "اختبار تصحيح يدوي",
+            durationMinutes = 30,
+            maxAttempts = 1,
+            allowResumeAfterFocusLoss = true,
+            resultsReleaseMode,
+            stage = DefaultStage,
+            grade = DefaultGrade,
+            questions = new object[]
+            {
+                new { text = "اكتب فقرة قصيرة", type = "Essay", options = Array.Empty<string>(), correctAnswer = (string?)null, points = 5 }
+            }
+        });
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        var examId = GuidValue((await ReadJson(create))["id"]);
+        Assert.Equal(HttpStatusCode.OK, (await teacher.PutAsync($"/api/exams/{examId}/publish", null)).StatusCode);
+        return examId;
+    }
+
 
     private static async Task PublishResults(HttpClient teacher, Guid examId)
     {
@@ -831,7 +929,7 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
     public async Task Student_OwnCode_JoinsCurrentPublishedExam_AndTeacherSeesCodeWithName()
     {
         var (teacher, teacherAuth) = await RegisterAndLogin(Email("roster-teacher"), "Teacher", "مدرس الحضور");
-        var (student, studentAuth) = await RegisterAndLogin(Email("roster-student"), "Student", "احمد جبريل");
+        var (student, studentAuth) = await RegisterAndLogin(Email("roster-student"), "Student", "سارة أحمد رستم");
         await EnrollStudent(teacher, student);
         var examId = await CreatePublishedExam(teacher);
         var studentCode = StudentCode(studentAuth);
@@ -848,7 +946,7 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
 
         var live = await teacher.GetFromJsonAsync<JsonNode>($"/api/exams/{examId}/live");
         var item = live!["items"]!.AsArray().Single();
-        Assert.Equal("احمد جبريل", item!["studentName"]!.GetValue<string>());
+        Assert.Equal(studentAuth["fullName"]!.GetValue<string>(), item!["studentName"]!.GetValue<string>());
         Assert.Equal(studentCode, item["code"]!.GetValue<string>());
         Assert.Equal("Waiting", item["status"]!.GetValue<string>());
     }
@@ -917,10 +1015,34 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
     {
         using var freshFactory = new ApiFactory();
         var client = freshFactory.CreateClient();
+        var teacherEmail = Email("idle-teacher");
+        var teacherRegister = await client.PostAsJsonAsync("/api/auth/register", new
+        {
+            fullName = "مدرس بيئة فارغة",
+            email = teacherEmail,
+            password = "Passw0rd!2026",
+            role = "Teacher"
+        });
+        Assert.Equal(HttpStatusCode.OK, teacherRegister.StatusCode);
+        var teacherLogin = await client.PostAsJsonAsync("/api/auth/login", new { email = teacherEmail, password = "Passw0rd!2026" });
+        Assert.Equal(HttpStatusCode.OK, teacherLogin.StatusCode);
+        var teacherAuth = await ReadJson(teacherLogin);
         var email = Email("idle-student");
-        var register = await client.PostAsJsonAsync("/api/auth/register", new { fullName = "طالب بدون امتحان", email, password = "Passw0rd!", role = "Student", stage = DefaultStage, grade = DefaultGrade });
+        var register = await client.PostAsJsonAsync("/api/auth/register", new
+        {
+            fullName = "طالب بدون امتحان اختبار",
+            email,
+            password = "Passw0rd!2026",
+            role = "Student",
+            stage = DefaultStage,
+            grade = DefaultGrade,
+            studentPhone = TestPhone("01"),
+            parentPhone = TestPhone("02"),
+            teacherCount = 1,
+            teacherIds = new[] { GuidValue(teacherAuth["userId"]) }
+        });
         Assert.Equal(HttpStatusCode.OK, register.StatusCode);
-        var login = await client.PostAsJsonAsync("/api/auth/login", new { email, password = "Passw0rd!" });
+        var login = await client.PostAsJsonAsync("/api/auth/login", new { email, password = "Passw0rd!2026" });
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         var auth = await ReadJson(login);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth["token"]!.GetValue<string>());
@@ -1093,20 +1215,25 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
         // Register multiple students and verify all have unique 6-digit codes.
         var client = factory.CreateClient();
         var codes = new HashSet<string>();
+        var registrationTeacherId = await GetRegistrationTeacherId();
         for (var i = 0; i < 10; i++)
         {
             var email = Email($"collision-{i}");
             var register = await client.PostAsJsonAsync("/api/auth/register", new
             {
-                fullName = $"طالب ت撞{i}",
+                fullName = $"طالب اختبار {new string((char)('أ' + i), 2)} {new string(Guid.NewGuid().ToString("N").Where(char.IsLetter).Take(4).ToArray())} فريد",
                 email,
-                password = "Passw0rd!",
+                password = "Passw0rd!2026",
                 role = "Student",
                 stage = DefaultStage,
-                grade = DefaultGrade
+                grade = DefaultGrade,
+                studentPhone = TestPhone("01"),
+                parentPhone = TestPhone("02"),
+                teacherCount = 1,
+                teacherIds = new[] { registrationTeacherId }
             });
             Assert.Equal(HttpStatusCode.OK, register.StatusCode);
-            var login = await client.PostAsJsonAsync("/api/auth/login", new { email, password = "Passw0rd!" });
+            var login = await client.PostAsJsonAsync("/api/auth/login", new { email, password = "Passw0rd!2026" });
             var auth = await ReadJson(login);
             var code = auth["studentCode"]!.GetValue<string>();
             Assert.Matches("^[0-9]{6}$", code);
@@ -1123,7 +1250,7 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
         // Register multiple students and have them join.
         for (var i = 0; i < 5; i++)
         {
-            var (student, studentAuth) = await RegisterAndLogin(Email($"pag-student-{i}"), "Student", $"طالب تجزئة {i}");
+            var (student, studentAuth) = await RegisterAndLogin(Email($"pag-student-{i}"), "Student", $"طالب تجزئة {new string((char)('أ' + i), 2)} صفحة");
             await EnrollStudent(teacher, student);
             var code = StudentCode(studentAuth);
             var joined = await student.PostAsJsonAsync("/api/exams/enter-code", new { code });
@@ -1237,22 +1364,23 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
             Assert.Equal(HttpStatusCode.Created, create.StatusCode);
             var id = GuidValue((await ReadJson(create))["id"]);
             Assert.Equal(HttpStatusCode.OK, (await teacher.PutAsync($"/api/exams/{id}/publish", null)).StatusCode);
-            Assert.Equal(HttpStatusCode.OK, (await student.PostAsync($"/api/exams/{id}/enter", null)).StatusCode);
             Assert.Equal(HttpStatusCode.OK, (await teacher.PutAsJsonAsync($"/api/exams/{id}/state", new { action = "open" })).StatusCode);
             return id;
         }
 
         var now = DateTime.UtcNow;
         var openExam = await CreateWindowExam("نافذة مفتوحة", now.AddHours(-1), now.AddMinutes(10));
+        Assert.Equal(HttpStatusCode.OK, (await student.PostAsync($"/api/exams/{openExam}/enter", null)).StatusCode);
         var started = await student.PostAsync($"/api/exams/{openExam}/start", null);
         Assert.Equal(HttpStatusCode.OK, started.StatusCode);
         var remaining = (await ReadJson(started))["remainingSeconds"]!.GetValue<int>();
         Assert.InRange(remaining, 540, 600);
 
         var expiredExam = await CreateWindowExam("نافذة منتهية", now.AddHours(-2), now.AddMinutes(-1));
-        Assert.Equal(HttpStatusCode.Conflict, (await student.PostAsync($"/api/exams/{expiredExam}/start", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await student.PostAsync($"/api/exams/{expiredExam}/enter", null)).StatusCode);
 
         var futureExam = await CreateWindowExam("نافذة مستقبلية", now.AddHours(1), now.AddHours(2));
+        Assert.Equal(HttpStatusCode.OK, (await student.PostAsync($"/api/exams/{futureExam}/enter", null)).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await student.PostAsync($"/api/exams/{futureExam}/start", null)).StatusCode);
 
         var other = await RegisterAndLogin(Email("availability-other-teacher"), "Teacher", "مدرس آخر");
@@ -1469,7 +1597,7 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var relationship = await db.TeacherStudentRequests.SingleAsync(x => x.TeacherId == teacherId && x.StudentId == studentId);
-            Assert.Equal("Accepted", relationship.Status);
+            Assert.Equal("Unlinked", relationship.Status);
             Assert.NotNull(relationship.UnlinkedAtUtc);
             Assert.Null(relationship.SuspendedAtUtc);
             Assert.False(await db.TeacherStudentExamBans.AnyAsync(x => x.TeacherId == teacherId && x.StudentId == studentId));
@@ -1509,9 +1637,15 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var relationship = await db.TeacherStudentRequests.SingleAsync(x => x.TeacherId == teacherId && x.StudentId == studentId);
-            Assert.Equal("Accepted", relationship.Status);
-            Assert.Null(relationship.UnlinkedAtUtc);
+            var history = await db.TeacherStudentRequests
+                .Where(x => x.TeacherId == teacherId && x.StudentId == studentId)
+                .OrderBy(x => x.CreatedAtUtc)
+                .ToListAsync();
+            Assert.Equal(2, history.Count);
+            Assert.Equal("Unlinked", history[0].Status);
+            Assert.NotNull(history[0].UnlinkedAtUtc);
+            Assert.Equal("Accepted", history[1].Status);
+            Assert.Null(history[1].UnlinkedAtUtc);
         }
 
         var relinked = await teacher.GetFromJsonAsync<JsonNode>($"/api/teacher/students/{studentId}");
@@ -1531,7 +1665,7 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
         {
             fullName = "طالب بلا مرحلة",
             email = Email("education-missing"),
-            password = "Passw0rd!",
+            password = "Passw0rd!2026",
             role = "Student"
         });
         Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
@@ -1540,7 +1674,7 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
         {
             fullName = "طالب مرحلة غير متطابقة",
             email = Email("education-mismatched"),
-            password = "Passw0rd!",
+            password = "Passw0rd!2026",
             role = "Student",
             stage = "ثانوي",
             grade = "الصف الأول الابتدائي"
@@ -1548,18 +1682,23 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
         Assert.Equal(HttpStatusCode.BadRequest, mismatched.StatusCode);
 
         var email = Email("education-valid");
+        var registrationTeacherId = await GetRegistrationTeacherId();
         var valid = await anonymous.PostAsJsonAsync("/api/auth/register", new
         {
-            fullName = "طالب مرحلة صحيحة",
+            fullName = "طالب مرحلة صحيحة اختبار",
             email,
-            password = "Passw0rd!",
+            password = "Passw0rd!2026",
             role = "Student",
             stage = DefaultStage,
-            grade = DefaultGrade
+            grade = DefaultGrade,
+            studentPhone = TestPhone("01"),
+            parentPhone = TestPhone("02"),
+            teacherCount = 1,
+            teacherIds = new[] { registrationTeacherId }
         });
         Assert.Equal(HttpStatusCode.OK, valid.StatusCode);
 
-        var login = await anonymous.PostAsJsonAsync("/api/auth/login", new { email, password = "Passw0rd!" });
+        var login = await anonymous.PostAsJsonAsync("/api/auth/login", new { email, password = "Passw0rd!2026" });
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         var auth = await ReadJson(login);
         Assert.Equal(DefaultStage, auth["stage"]!.GetValue<string>());
@@ -1569,7 +1708,7 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
         {
             fullName = "مدرس بلا مرحلة",
             email = Email("education-teacher"),
-            password = "Passw0rd!",
+            password = "Passw0rd!2026",
             role = "Teacher"
         });
         Assert.Equal(HttpStatusCode.OK, teacher.StatusCode);
@@ -1597,6 +1736,7 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
 
         Assert.Equal(HttpStatusCode.BadRequest, (await Create(null, null)).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await Create("ثانوي", "الصف الأول الابتدائي")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await Create("البكالوريا", "الصف الثالث الثانوي")).StatusCode);
 
         var created = await Create(DefaultStage, DefaultGrade);
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
@@ -1607,6 +1747,65 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
         var detail = await teacher.GetFromJsonAsync<JsonNode>($"/api/exams/{GuidValue(body["id"])}");
         Assert.Equal(DefaultStage, detail!["stage"]!.GetValue<string>());
         Assert.Equal(DefaultGrade, detail["grade"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Baccalaureate_IsValidatedAndVisibleOnlyToMatchingEnrolledStudents()
+    {
+        var (teacher, _) = await RegisterAndLogin(Email("baccalaureate-teacher"), "Teacher", "مدرس البكالوريا");
+        var (firstYear, _) = await RegisterAndLogin(Email("baccalaureate-first"), "Student", "طالب أولى بكالوريا", "البكالوريا", "أولى بكالوريا");
+        var (secondYear, _) = await RegisterAndLogin(Email("baccalaureate-second"), "Student", "طالب تانية بكالوريا", "البكالوريا", "تانية بكالوريا");
+        var (secondary, _) = await RegisterAndLogin(Email("baccalaureate-secondary"), "Student", "طالب ثانوي", "ثانوي", "الصف الثالث الثانوي");
+        await EnrollStudent(teacher, firstYear);
+        await EnrollStudent(teacher, secondYear);
+        await EnrollStudent(teacher, secondary);
+
+        var examId = await CreateCustomExam(teacher, "امتحان أولى بكالوريا", stage: "البكالوريا", grade: "أولى بكالوريا");
+
+        var firstAvailable = await firstYear.GetFromJsonAsync<JsonNode>("/api/exams/available");
+        Assert.Contains(firstAvailable!["items"]!.AsArray(), x => GuidValue(x!["examId"]) == examId);
+        var secondAvailable = await secondYear.GetFromJsonAsync<JsonNode>("/api/exams/available");
+        Assert.DoesNotContain(secondAvailable!["items"]!.AsArray(), x => GuidValue(x!["examId"]) == examId);
+        var secondaryAvailable = await secondary.GetFromJsonAsync<JsonNode>("/api/exams/available");
+        Assert.DoesNotContain(secondaryAvailable!["items"]!.AsArray(), x => GuidValue(x!["examId"]) == examId);
+
+        var detail = await firstYear.GetFromJsonAsync<JsonNode>($"/api/exams/{examId}");
+        Assert.Equal("البكالوريا", detail!["stage"]!.GetValue<string>());
+        Assert.Equal("أولى بكالوريا", detail["grade"]!.GetValue<string>());
+        Assert.Equal(HttpStatusCode.OK, (await firstYear.PostAsync($"/api/exams/{examId}/enter", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await secondYear.GetAsync($"/api/exams/{examId}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await secondYear.PostAsync($"/api/exams/{examId}/enter", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await secondary.GetAsync($"/api/exams/{examId}")).StatusCode);
+
+        var firstStudentId = GuidValue((await firstYear.GetFromJsonAsync<JsonNode>("/api/auth/me"))!["id"]);
+        var filtered = await teacher.GetFromJsonAsync<JsonNode>(
+            $"/api/teacher/students?stage={Uri.EscapeDataString("البكالوريا")}&grade={Uri.EscapeDataString("أولى بكالوريا")}");
+        Assert.Equal(firstStudentId, GuidValue(filtered!["items"]!.AsArray().Single()!["studentId"]));
+        Assert.Equal(1, filtered["total"]!.GetValue<int>());
+
+        // Completing/changing the profile to a Baccalaureate grade must unblock the matching exam.
+        var update = await secondYear.PutAsJsonAsync("/api/auth/profile/education", new
+        {
+            stage = "البكالوريا",
+            grade = "أولى بكالوريا"
+        });
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+        var afterUpdate = await secondYear.GetFromJsonAsync<JsonNode>("/api/exams/available");
+        Assert.Contains(afterUpdate!["items"]!.AsArray(), x => GuidValue(x!["examId"]) == examId);
+
+        var invalidRegistration = await factory.CreateClient().PostAsJsonAsync("/api/auth/register", new
+        {
+            fullName = "طالب بكالوريا بصف خاطئ",
+            email = Email("baccalaureate-invalid"),
+            password = "Passw0rd!2026",
+            role = "Student",
+            stage = "البكالوريا",
+            grade = "الصف الثالث الثانوي"
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, invalidRegistration.StatusCode);
+
+        await OpenExam(teacher, examId);
+        await StartAttempt(firstYear, examId);
     }
 
     [Fact]
@@ -1706,7 +1905,7 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
         Assert.Equal(DefaultStage, refreshed!["stage"]!.GetValue<string>());
         Assert.Equal(DefaultGrade, refreshed["grade"]!.GetValue<string>());
 
-        var login = await factory.CreateClient().PostAsJsonAsync("/api/auth/login", new { email, password = "Passw0rd!" });
+        var login = await factory.CreateClient().PostAsJsonAsync("/api/auth/login", new { email, password = "Passw0rd!2026" });
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         var newAuth = await ReadJson(login);
         Assert.Equal(DefaultStage, newAuth["stage"]!.GetValue<string>());
@@ -1721,7 +1920,7 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
     public async Task DirectEntryWithoutCode_BindsAttemptToAuthenticatedStudent_AndRejectsSubmissionTampering()
     {
         var (teacher, _) = await RegisterAndLogin(Email("binding-teacher"), "Teacher", "مدرس ربط المحاولة");
-        var (first, _) = await RegisterAndLogin(Email("binding-first"), "Student", "الطالب الأول");
+        var (first, firstAuth) = await RegisterAndLogin(Email("binding-first"), "Student", "الطالب الأول");
         var (second, _) = await RegisterAndLogin(Email("binding-second"), "Student", "الطالب الثاني");
         await EnrollStudent(teacher, first);
         await EnrollStudent(teacher, second);
@@ -1779,7 +1978,7 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
 
         var results = await teacher.GetFromJsonAsync<JsonNode>($"/api/exams/{examId}/results");
         var firstRow = results!["items"]!.AsArray().Single(x => GuidValue(x!["id"]) == firstSubmission)!;
-        Assert.Equal("الطالب الأول", firstRow["student"]!.GetValue<string>());
+        Assert.Equal(firstAuth["fullName"]!.GetValue<string>(), firstRow["student"]!.GetValue<string>());
         Assert.Equal(3, firstRow["score"]!.GetValue<double>());
     }
 
@@ -1836,16 +2035,214 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
         var weak = await client.PostAsJsonAsync("/api/auth/reset-password", new { token, password = "short" });
         Assert.Equal(HttpStatusCode.BadRequest, weak.StatusCode);
 
-        var reset = await client.PostAsJsonAsync("/api/auth/reset-password", new { token, password = "NewPassw0rd!" });
+        var reset = await client.PostAsJsonAsync("/api/auth/reset-password", new { token, password = "NewPassw0rd!2026" });
         Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
 
-        var oldLogin = await client.PostAsJsonAsync("/api/auth/login", new { email, password = "Passw0rd!" });
+        var oldLogin = await client.PostAsJsonAsync("/api/auth/login", new { email, password = "Passw0rd!2026" });
         Assert.Equal(HttpStatusCode.Unauthorized, oldLogin.StatusCode);
-        var newLogin = await client.PostAsJsonAsync("/api/auth/login", new { email, password = "NewPassw0rd!" });
+        var newLogin = await client.PostAsJsonAsync("/api/auth/login", new { email, password = "NewPassw0rd!2026" });
         Assert.Equal(HttpStatusCode.OK, newLogin.StatusCode);
         Assert.True(auth["studentCode"] != null);
 
         var reused = await client.PostAsJsonAsync("/api/auth/reset-password", new { token, password = "AnotherPass1!" });
         Assert.Equal(HttpStatusCode.BadRequest, reused.StatusCode);
+    }
+
+    [Fact]
+    public async Task ExpiredJwt_CanRefreshAndContinueSavingWithoutLosingAnswers()
+    {
+        var (teacher, _) = await RegisterAndLogin(Email("refresh-teacher"), "Teacher", "مدرس تجديد الجلسة");
+        var (student, studentAuth) = await RegisterAndLogin(Email("refresh-student"), "Student", "طالب تجديد الجلسة");
+        await EnrollStudent(teacher, student);
+        var examId = await CreatePublishedExam(teacher);
+        var studentCode = StudentCode(studentAuth);
+
+        Assert.Equal(HttpStatusCode.OK, (await student.PostAsJsonAsync("/api/exams/enter-code", new { code = studentCode })).StatusCode);
+        await OpenExam(teacher, examId);
+        var start = await student.PostAsync($"/api/exams/{examId}/start", null);
+        Assert.Equal(HttpStatusCode.OK, start.StatusCode);
+        var submissionId = GuidValue((await ReadJson(start))["id"]);
+        var paper = await student.GetFromJsonAsync<JsonNode>($"/api/exams/{examId}/paper");
+        var questions = paper!["questions"]!.AsArray();
+        var firstAnswers = questions.Select(question => new
+        {
+            questionId = GuidValue(question!["id"]),
+            answerText = question["type"]!.GetValue<string>() == "MultipleChoice" ? "4" : "صح"
+        }).ToArray();
+
+        Assert.Equal(HttpStatusCode.OK, (await student.PutAsJsonAsync($"/api/submissions/{submissionId}/answers", new { answers = firstAnswers, focusLossDetected = false })).StatusCode);
+        // Repeating the same idempotent save must not duplicate answer rows.
+        Assert.Equal(HttpStatusCode.OK, (await student.PutAsJsonAsync($"/api/submissions/{submissionId}/answers", new { answers = firstAnswers, focusLossDetected = false })).StatusCode);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Assert.Equal(questions.Count, await db.Answers.CountAsync(x => x.SubmissionId == submissionId));
+        }
+
+        var studentId = await StudentId(student);
+        var expiredClient = factory.CreateClient();
+        expiredClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", CreateExpiredToken(studentId, "Student"));
+        var expiredSave = await expiredClient.PutAsJsonAsync($"/api/submissions/{submissionId}/answers", new { answers = firstAnswers, focusLossDetected = false });
+        Assert.Equal(HttpStatusCode.Unauthorized, expiredSave.StatusCode);
+
+        var refreshToken = studentAuth["refreshToken"]!.GetValue<string>();
+        var refreshResponse = await factory.CreateClient().PostAsJsonAsync("/api/auth/refresh", new { refreshToken });
+        Assert.Equal(HttpStatusCode.OK, refreshResponse.StatusCode);
+        var refreshed = await ReadJson(refreshResponse);
+        var freshToken = refreshed["token"]!.GetValue<string>();
+        Assert.False(string.IsNullOrWhiteSpace(freshToken));
+        Assert.NotEqual(refreshToken, refreshed["refreshToken"]!.GetValue<string>());
+
+        var freshClient = factory.CreateClient();
+        freshClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", freshToken);
+        var updatedAnswers = questions.Select(question => new
+        {
+            questionId = GuidValue(question!["id"]),
+            answerText = question["type"]!.GetValue<string>() == "MultipleChoice" ? "3" : "خطأ"
+        }).ToArray();
+        Assert.Equal(HttpStatusCode.OK, (await freshClient.PutAsJsonAsync($"/api/submissions/{submissionId}/answers", new { answers = updatedAnswers, focusLossDetected = false })).StatusCode);
+
+        // A reload / reconnect returns the last server-confirmed answers.
+        var restoredPaper = await freshClient.GetFromJsonAsync<JsonNode>($"/api/exams/{examId}/paper");
+        Assert.Equal(questions.Count, restoredPaper!["answers"]!.AsArray().Count);
+        Assert.Contains(restoredPaper["answers"]!.AsArray(), answer => answer!["answerText"]!.GetValue<string>() == "3");
+
+        var submit = await freshClient.PostAsJsonAsync($"/api/submissions/{submissionId}/submit", new { answers = updatedAnswers, focusLossDetected = false });
+        Assert.Equal(HttpStatusCode.OK, submit.StatusCode);
+
+        // The rotated refresh token cannot be replayed.
+        var replay = await factory.CreateClient().PostAsJsonAsync("/api/auth/refresh", new { refreshToken });
+        Assert.Equal(HttpStatusCode.Unauthorized, replay.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResultsReleaseModes_ControlVisibilityAndRespectManualEssayGrading()
+    {
+        var (teacher, _) = await RegisterAndLogin(Email("release-teacher"), "Teacher", "مدرس مواعيد النتائج");
+        var (student, _) = await RegisterAndLogin(Email("release-student"), "Student", "طالب مواعيد النتائج");
+        await EnrollStudent(teacher, student);
+
+        async Task<Guid> StartAndSubmit(Guid examId, string answer = "4")
+        {
+            Assert.Equal(HttpStatusCode.OK, (await student.PostAsync($"/api/exams/{examId}/enter", null)).StatusCode);
+            await OpenExam(teacher, examId);
+            var start = await student.PostAsync($"/api/exams/{examId}/start", null);
+            Assert.Equal(HttpStatusCode.OK, start.StatusCode);
+            var submissionId = GuidValue((await ReadJson(start))["id"]);
+            var paper = await student.GetFromJsonAsync<JsonNode>($"/api/exams/{examId}/paper");
+            var answers = paper!["questions"]!.AsArray().Select(question => new
+            {
+                questionId = GuidValue(question!["id"]),
+                answerText = question["type"]!.GetValue<string>() == "MultipleChoice" ? answer : "صح"
+            }).ToArray();
+            Assert.Equal(HttpStatusCode.OK, (await student.PostAsJsonAsync($"/api/submissions/{submissionId}/submit", new { answers, focusLossDetected = false })).StatusCode);
+            return submissionId;
+        }
+
+        var afterSubmissionExam = await CreatePublishedExam(teacher, resultsReleaseMode: "AfterSubmission");
+        var firstSubmission = await StartAndSubmit(afterSubmissionExam);
+        var mine = await student.GetFromJsonAsync<JsonNode>("/api/results/mine");
+        var firstResult = mine!.AsArray().Single(x => GuidValue(x!["examId"]) == afterSubmissionExam);
+        Assert.True(firstResult["resultsAvailable"]!.GetValue<bool>());
+        Assert.Equal(3, firstResult["score"]!.GetValue<double>());
+        var firstReview = await student.GetFromJsonAsync<JsonNode>($"/api/submissions/{firstSubmission}/review");
+        Assert.Equal("4", firstReview!["answers"]![0]!["correctAnswer"]!.GetValue<string>());
+
+        var afterExamEnd = await CreatePublishedExam(teacher, resultsReleaseMode: "AfterExamEnd");
+        var secondSubmission = await StartAndSubmit(afterExamEnd);
+        mine = await student.GetFromJsonAsync<JsonNode>("/api/results/mine");
+        var hidden = mine!.AsArray().Single(x => GuidValue(x!["examId"]) == afterExamEnd);
+        Assert.False(hidden["resultsAvailable"]!.GetValue<bool>());
+        Assert.True(hidden["score"] is null);
+        var hiddenReview = await student.GetFromJsonAsync<JsonNode>($"/api/submissions/{secondSubmission}/review");
+        Assert.False(hiddenReview!["resultsAvailable"]!.GetValue<bool>());
+        Assert.True(hiddenReview["answers"]![0]!["correctAnswer"] is null);
+
+        var close = await teacher.PutAsJsonAsync($"/api/exams/{afterExamEnd}/state", new { action = "close" });
+        Assert.Equal(HttpStatusCode.OK, close.StatusCode);
+        mine = await student.GetFromJsonAsync<JsonNode>("/api/results/mine");
+        var released = mine!.AsArray().Single(x => GuidValue(x!["examId"]) == afterExamEnd);
+        Assert.True(released["resultsAvailable"]!.GetValue<bool>());
+        Assert.Equal(3, released["score"]!.GetValue<double>());
+
+        var essayExam = await CreateEssayExam(teacher, "AfterSubmission");
+        Assert.Equal(HttpStatusCode.OK, (await student.PostAsync($"/api/exams/{essayExam}/enter", null)).StatusCode);
+        await OpenExam(teacher, essayExam);
+        var essayStart = await student.PostAsync($"/api/exams/{essayExam}/start", null);
+        var essaySubmission = GuidValue((await ReadJson(essayStart))["id"]);
+        var essayPaper = await student.GetFromJsonAsync<JsonNode>($"/api/exams/{essayExam}/paper");
+        var essayAnswers = essayPaper!["questions"]!.AsArray().Select(question => new { questionId = GuidValue(question!["id"]), answerText = "إجابة مقالية" }).ToArray();
+        Assert.Equal(HttpStatusCode.OK, (await student.PostAsJsonAsync($"/api/submissions/{essaySubmission}/submit", new { answers = essayAnswers, focusLossDetected = false })).StatusCode);
+
+        mine = await student.GetFromJsonAsync<JsonNode>("/api/results/mine");
+        var pendingEssay = mine!.AsArray().Single(x => GuidValue(x!["examId"]) == essayExam);
+        Assert.False(pendingEssay["resultsAvailable"]!.GetValue<bool>());
+        Assert.True(pendingEssay["score"] is null);
+        var pendingReview = await student.GetFromJsonAsync<JsonNode>($"/api/submissions/{essaySubmission}/review");
+        Assert.False(pendingReview!["resultsAvailable"]!.GetValue<bool>());
+        Assert.True(pendingReview["score"] is null);
+        Assert.True(pendingReview["answers"]![0]!["awardedPoints"] is null);
+
+        var teacherReview = await teacher.GetFromJsonAsync<JsonNode>($"/api/exams/{essayExam}/review");
+        var essayRow = teacherReview!.AsArray().Single(x => GuidValue(x!["id"]) == essaySubmission);
+        var answerId = GuidValue(essayRow["answers"]![0]!["id"]);
+        var graded = await teacher.PutAsJsonAsync($"/api/submissions/{essaySubmission}/answers/{answerId}/grade", new { awardedPoints = 4, feedback = "جيد" });
+        Assert.Equal(HttpStatusCode.OK, graded.StatusCode);
+
+        mine = await student.GetFromJsonAsync<JsonNode>("/api/results/mine");
+        var gradedResult = mine!.AsArray().Single(x => GuidValue(x!["examId"]) == essayExam);
+        Assert.True(gradedResult["resultsAvailable"]!.GetValue<bool>());
+        Assert.Equal(4, gradedResult["score"]!.GetValue<double>());
+        var gradedReview = await student.GetFromJsonAsync<JsonNode>($"/api/submissions/{essaySubmission}/review");
+        Assert.True(gradedReview!["resultsAvailable"]!.GetValue<bool>());
+        Assert.Equal(4, gradedReview["answers"]![0]!["awardedPoints"]!.GetValue<double>());
+    }
+
+    [Fact]
+    public async Task ExpiredAttempt_RejectsNewAnswersButKeepsSavedAnswersForFinalization()
+    {
+        var (teacher, _) = await RegisterAndLogin(Email("deadline-teacher"), "Teacher", "مدرس انتهاء الوقت");
+        var (student, studentAuth) = await RegisterAndLogin(Email("deadline-student"), "Student", "طالب انتهاء الوقت");
+        await EnrollStudent(teacher, student);
+        var examId = await CreatePublishedExam(teacher);
+        var studentCode = StudentCode(studentAuth);
+
+        Assert.Equal(HttpStatusCode.OK, (await student.PostAsJsonAsync("/api/exams/enter-code", new { code = studentCode })).StatusCode);
+        await OpenExam(teacher, examId);
+        var start = await student.PostAsync($"/api/exams/{examId}/start", null);
+        var submissionId = GuidValue((await ReadJson(start))["id"]);
+        var paper = await student.GetFromJsonAsync<JsonNode>($"/api/exams/{examId}/paper");
+        var questions = paper!["questions"]!.AsArray();
+        var savedAnswers = questions.Select(question => new
+        {
+            questionId = GuidValue(question!["id"]),
+            answerText = question["type"]!.GetValue<string>() == "MultipleChoice" ? "4" : "صح"
+        }).ToArray();
+        Assert.Equal(HttpStatusCode.OK, (await student.PutAsJsonAsync($"/api/submissions/{submissionId}/answers", new { answers = savedAnswers, focusLossDetected = false })).StatusCode);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var submission = await db.Submissions.SingleAsync(x => x.Id == submissionId);
+            submission.StartedAtUtc = DateTime.UtcNow.AddMinutes(-31);
+            await db.SaveChangesAsync();
+        }
+
+        var restored = await student.GetFromJsonAsync<JsonNode>($"/api/exams/{examId}/paper");
+        Assert.Contains(restored!["answers"]!.AsArray(), answer => answer!["answerText"]!.GetValue<string>() == "4");
+
+        var lateAnswers = questions.Select(question => new
+        {
+            questionId = GuidValue(question!["id"]),
+            answerText = question["type"]!.GetValue<string>() == "MultipleChoice" ? "3" : "خطأ"
+        }).ToArray();
+        var lateSave = await student.PutAsJsonAsync($"/api/submissions/{submissionId}/answers", new { answers = lateAnswers, focusLossDetected = false });
+        Assert.Equal(HttpStatusCode.BadRequest, lateSave.StatusCode);
+
+        var lateSubmit = await student.PostAsJsonAsync($"/api/submissions/{submissionId}/submit", new { answers = lateAnswers, focusLossDetected = false });
+        Assert.Equal(HttpStatusCode.OK, lateSubmit.StatusCode);
+        var review = await student.GetFromJsonAsync<JsonNode>($"/api/submissions/{submissionId}/review");
+        Assert.Equal("4", review!["answers"]![0]!["studentAnswer"]!.GetValue<string>());
+        Assert.Equal("صح", review["answers"]![1]!["studentAnswer"]!.GetValue<string>());
     }
 }

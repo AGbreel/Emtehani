@@ -12,9 +12,17 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration config)
     {
-        var connectionString = ResolveConnectionString(config);
-        services.AddDbContext<AppDbContext>(options =>
+        // Resolve the connection when the DbContext is constructed, not during service
+        // registration. This keeps configuration overrides/tests authoritative and makes
+        // a missing production connection fail at the first database use.
+        services.AddDbContext<AppDbContext>((sp, options) =>
         {
+            var connectionString = ResolveConnectionString(sp.GetRequiredService<IConfiguration>());
+            // The application uses explicit transactions (exam close, submission
+            // finalization, relationships). Enabling EF's retrying execution strategy
+            // without wrapping every transaction in CreateExecutionStrategy() would make
+            // those paths fail at runtime, so retries stay at the infrastructure/proxy
+            // level until the transaction layer is refactored deliberately.
             if (IsSqlServerConnection(connectionString))
                 options.UseSqlServer(connectionString);
             else

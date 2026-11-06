@@ -7,16 +7,22 @@ import {
   GraduationCap,
   ImagePlus,
   LoaderCircle,
+  Lock,
+  Megaphone,
   MessageCircle,
   MessagesSquare,
   Paperclip,
+  Pin,
   Plus,
   RefreshCw,
   Search,
   Send,
+  Settings2,
   ShieldCheck,
   Sparkles,
+  Trash2,
   UserRound,
+  UserX,
   Users,
   X,
 } from 'lucide-react';
@@ -26,6 +32,23 @@ import { assetUrl, request } from '../lib/api';
 const timeFormatter = new Intl.DateTimeFormat('ar-EG', { hour: '2-digit', minute: '2-digit' });
 const dateFormatter = new Intl.DateTimeFormat('ar-EG', { day: 'numeric', month: 'long' });
 const weekdayFormatter = new Intl.DateTimeFormat('ar-EG', { weekday: 'long' });
+const shortDateTimeFormatter = new Intl.DateTimeFormat('ar-EG', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+const auditLabels = {
+  'mode.changed': 'تغيير وضع المحادثة',
+  'message.deleted': 'حذف رسالة',
+  'message.pinned': 'تثبيت رسالة',
+  'message.unpinned': 'إلغاء تثبيت رسالة',
+  'message.approved': 'اعتماد رسالة',
+  'message.rejected': 'رفض رسالة',
+  'member.muted': 'كتم عضو',
+  'member.unmuted': 'رفع كتم عضو',
+};
+
+function formatShortDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : shortDateTimeFormatter.format(date);
+}
 
 function isSameDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -74,6 +97,19 @@ export default function ChatPage({ token, user }) {
   const [threadLoading, setThreadLoading] = useState(false);
   const [threadError, setThreadError] = useState('');
   const [peerReadAtUtc, setPeerReadAtUtc] = useState(null);
+  const [thread, setThread] = useState(null);
+  const [control, setControl] = useState(null);
+  const [pinned, setPinned] = useState([]);
+  const [pinnedOpen, setPinnedOpen] = useState(false);
+  const [pending, setPending] = useState([]);
+  const [audit, setAudit] = useState([]);
+  const [governanceOpen, setGovernanceOpen] = useState(false);
+  const [governanceTab, setGovernanceTab] = useState('mode');
+  const [governanceBusy, setGovernanceBusy] = useState('');
+  const [governanceError, setGovernanceError] = useState('');
+  const [chatSearch, setChatSearch] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
 
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -136,6 +172,7 @@ export default function ChatPage({ token, user }) {
         setMessages(items);
       }
       setPeerReadAtUtc(result?.peerReadAtUtc ?? null);
+      setThread(result?.conversation ?? null);
       setThreadError('');
       if (items.length) {
         lastSentRef.current = items[items.length - 1].sentAtUtc;
@@ -155,6 +192,15 @@ export default function ChatPage({ token, user }) {
     lastSentRef.current = null;
     setMessages([]);
     setPeerReadAtUtc(null);
+    setThread(null);
+    setControl(null);
+    setPinned([]);
+    setPending([]);
+    setAudit([]);
+    setPinnedOpen(false);
+    setGovernanceOpen(false);
+    setChatSearch('');
+    setSearchResults([]);
     setThreadError('');
     setMobileThread(true);
     stickToBottomRef.current = true;
@@ -179,6 +225,123 @@ export default function ChatPage({ token, user }) {
       setStartingId(null);
     }
   }, [token, loadConversations, openConversation]);
+
+  const loadGovernance = useCallback(async (conversationId) => {
+    if (!conversationId) return;
+    try {
+      const [ctrl, pinnedResult] = await Promise.all([
+        request(`/api/chat/conversations/${conversationId}/control`, { token }),
+        request(`/api/chat/conversations/${conversationId}/pinned`, { token }).catch(() => ({ items: [] })),
+      ]);
+      if (activeIdRef.current !== conversationId) return;
+      setControl(ctrl);
+      setPinned(pinnedResult?.items ?? []);
+      if (ctrl?.canManage) {
+        const pendingResult = await request(`/api/chat/conversations/${conversationId}/pending`, { token }).catch(() => ({ items: [] }));
+        if (activeIdRef.current === conversationId) setPending(pendingResult?.items ?? []);
+      } else {
+        setPending([]);
+      }
+    } catch {
+      if (activeIdRef.current === conversationId) setControl(null);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (activeId) loadGovernance(activeId);
+  }, [activeId, loadGovernance]);
+
+  const runGovernance = async (key, task) => {
+    setGovernanceBusy(key);
+    setGovernanceError('');
+    try {
+      await task();
+    } catch (err) {
+      setGovernanceError(err.message || 'تعذر تنفيذ الإجراء.');
+    } finally {
+      setGovernanceBusy('');
+    }
+  };
+
+  const changeMode = (mode) => runGovernance(`mode-${mode}`, async () => {
+    const result = await request(`/api/chat/conversations/${activeId}/mode`, {
+      token,
+      method: 'PUT',
+      body: JSON.stringify({ mode }),
+    });
+    const nextMode = result?.chatMode || mode;
+    setControl((previous) => (previous ? { ...previous, chatMode: nextMode } : previous));
+    setThread((previous) => (previous ? { ...previous, chatMode: nextMode } : previous));
+    setConversations((previous) => previous.map((item) => (item.id === activeId ? { ...item, chatMode: nextMode } : item)));
+  });
+
+  const moderateMessage = (messageId, action) => runGovernance(`${action}-${messageId}`, async () => {
+    await request(`/api/chat/conversations/${activeId}/messages/${messageId}/${action}`, { token, method: 'POST' });
+    setPending((previous) => previous.filter((item) => item.id !== messageId));
+    await loadMessages(activeId, { quiet: true });
+    loadConversations({ background: true });
+  });
+
+  const togglePin = (message) => runGovernance(`pin-${message.id}`, async () => {
+    await request(`/api/chat/conversations/${activeId}/messages/${message.id}/pin`, { token, method: 'POST' });
+    setMessages((previous) => previous.map((item) => (item.id === message.id ? { ...item, isPinned: !item.isPinned } : item)));
+    const pinnedResult = await request(`/api/chat/conversations/${activeId}/pinned`, { token }).catch(() => ({ items: [] }));
+    setPinned(pinnedResult?.items ?? []);
+  });
+
+  const deleteMessage = (message) => {
+    if (!window.confirm('حذف هذه الرسالة للجميع؟')) return;
+    runGovernance(`delete-${message.id}`, async () => {
+      await request(`/api/chat/conversations/${activeId}/messages/${message.id}/delete`, { token, method: 'POST' });
+      setMessages((previous) => previous.filter((item) => item.id !== message.id));
+    });
+  };
+
+  const muteMember = (memberId, muted) => runGovernance(`mute-${memberId}`, async () => {
+    await request(`/api/chat/conversations/${activeId}/members/${memberId}/mute`, {
+      token,
+      method: 'POST',
+      body: JSON.stringify({ muted, minutes: null, reason: muted ? 'كتم من إدارة المحادثة' : null }),
+    });
+    await loadGovernance(activeId);
+  });
+
+  const loadAudit = async () => {
+    if (!activeId) return;
+    setGovernanceBusy('audit');
+    setGovernanceError('');
+    try {
+      const result = await request(`/api/chat/conversations/${activeId}/audit`, { token });
+      setAudit(result?.items ?? []);
+    } catch (err) {
+      setGovernanceError(err.message || 'تعذر تحميل سجل المحادثة.');
+    } finally {
+      setGovernanceBusy('');
+    }
+  };
+
+  const searchChat = async () => {
+    const term = chatSearch.trim();
+    if (term.length < 2 || !activeId) return;
+    setSearching(true);
+    setGovernanceError('');
+    try {
+      const result = await request(`/api/chat/conversations/${activeId}/search?q=${encodeURIComponent(term)}`, { token });
+      setSearchResults(result?.items ?? []);
+    } catch (err) {
+      setGovernanceError(err.message || 'تعذر البحث داخل المحادثة.');
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const openGovernance = (tab = 'mode') => {
+    setGovernanceTab(tab);
+    setGovernanceOpen(true);
+    setGovernanceError('');
+    if (tab === 'audit' && audit.length === 0) loadAudit();
+  };
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
@@ -328,7 +491,24 @@ export default function ChatPage({ token, user }) {
   }, [conversations, query]);
   const activeMeta = typeMeta(activeConversation?.type);
   const ActiveIcon = activeMeta.icon;
-  const canSend = Boolean(text.trim() || attachment) && !sending && Boolean(activeId);
+  const canSend = Boolean(text.trim() || attachment) && !sending && Boolean(activeId) && thread?.canPost !== false;
+  const currentMode = control?.chatMode || thread?.chatMode || activeConversation?.chatMode || '';
+  const modeLabels = {
+    TeacherOnly: 'المدرس فقط',
+    AdminOnly: 'الإدارة فقط',
+    Everyone: 'الجميع',
+    Moderated: 'بموافقة المدرس',
+    Announcement: 'إعلانات فقط',
+  };
+  const lockedReason = thread?.isMuted
+    ? 'تم كتمك في هذه المحادثة. تواصل مع المدرس لرفع الكتم.'
+    : currentMode === 'TeacherOnly'
+      ? 'المحادثة مغلقة حالياً — المدرس فقط يمكنه الإرسال.'
+      : currentMode === 'AdminOnly'
+        ? 'المحادثة مغلقة حالياً — الإدارة فقط يمكنها الإرسال.'
+        : currentMode === 'Announcement'
+          ? 'هذه المحادثة في وضع الإعلانات — الإدارة فقط ترسل.'
+          : 'الإرسال مغلق حالياً من قِبل إدارة المحادثة.';
 
   return (
     <div className="space-y-4">
@@ -468,6 +648,11 @@ export default function ChatPage({ token, user }) {
                       <div className="flex items-center gap-2">
                         <h3 className="truncate font-display text-[14.5px] font-semibold text-ink">{activeConversation.title}</h3>
                         <Badge tone={activeMeta.tone} className="hidden px-2 py-0.5 text-[9.5px] sm:inline-flex">{activeMeta.label}</Badge>
+                        {currentMode ? (
+                          <Badge tone={currentMode === 'Everyone' ? 'emerald' : currentMode === 'Moderated' ? 'warning' : 'neutral'} className="hidden px-2 py-0.5 text-[9.5px] md:inline-flex">
+                            {modeLabels[currentMode] || currentMode}
+                          </Badge>
+                        ) : null}
                       </div>
                       <p className="mt-0.5 flex items-center gap-2 text-[10.5px] text-muted">
                         <LiveDot label="متصل" className="text-[10px]" />
@@ -475,12 +660,39 @@ export default function ChatPage({ token, user }) {
                         <span className="hidden truncate sm:inline">{activeConversation.subtitle}</span>
                       </p>
                     </div>
+                    {pinned.length ? (
+                      <IconButton label="الرسائل المثبتة" onClick={() => setPinnedOpen((value) => !value)}>
+                        <Pin size={15} className={pinnedOpen ? 'fill-current text-primary' : ''} />
+                      </IconButton>
+                    ) : null}
+                    {control?.canManage ? (
+                      <IconButton label="إدارة المحادثة" onClick={() => openGovernance('mode')}><Settings2 size={15} /></IconButton>
+                    ) : null}
                     <IconButton label="تحديث الرسائل" onClick={() => loadMessages(activeConversation.id, { quiet: false })}><RefreshCw size={15} className={cn(threadLoading && 'animate-spin')} /></IconButton>
                   </div>
                 </div>
 
                 <div ref={scrollRef} onScroll={onScroll} className="ui-scrollbar-thin relative flex-1 space-y-1 overflow-y-auto overscroll-contain bg-surface-soft/35 px-2.5 py-4 sm:px-4">
                   <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(16,185,129,0.06),transparent_35%),radial-gradient(circle_at_85%_80%,rgba(59,130,246,0.05),transparent_30%)]" />
+                  {pinnedOpen && pinned.length > 0 ? (
+                    <div className="relative z-10 mb-3 rounded-[13px] border border-primary/25 bg-surface/95 p-2.5 shadow-sm backdrop-blur">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="flex items-center gap-1.5 text-[11px] font-bold text-primary"><Pin size={11} /> الرسائل المثبتة ({pinned.length})</p>
+                        <IconButton label="إخفاء المثبتة" onClick={() => setPinnedOpen(false)}><X size={12} /></IconButton>
+                      </div>
+                      <div className="ui-scrollbar-thin grid max-h-36 gap-1.5 overflow-y-auto">
+                        {pinned.map((item) => (
+                          <div key={item.id} className="rounded-[10px] border border-line bg-surface-soft px-2.5 py-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="truncate text-[10.5px] font-bold text-ink">{item.senderName || 'مستخدم'}</p>
+                              <span className="shrink-0 text-[9px] text-subtle">{inboxTime(item.sentAtUtc)}</span>
+                            </div>
+                            <p className="mt-0.5 line-clamp-2 text-[11px] leading-5 text-muted">{item.body || '📷 صورة'}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   {threadError ? <div className="relative z-10 mb-2"><Alert tone="danger" onClose={() => setThreadError('')}>{threadError}</Alert></div> : null}
                   {threadLoading ? (
                     <div className="relative z-10 grid gap-3 py-2">
@@ -516,7 +728,7 @@ export default function ChatPage({ token, user }) {
                               initial={reduce ? false : { opacity: 0, y: 8, scale: 0.985 }}
                               animate={{ opacity: 1, y: 0, scale: 1 }}
                               transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
-                              className={cn('mb-2 flex items-end gap-2', mine ? 'justify-end' : 'justify-start')}
+                              className={cn('group/msg mb-2 flex items-end gap-2', mine ? 'justify-end' : 'justify-start')}
                             >
                               {!mine && (showIdentity || !activeConversation.isGroup) ? (
                                 <Avatar name={message.senderName} size="sm" className="mb-4 size-7 text-[10px]" />
@@ -529,6 +741,16 @@ export default function ChatPage({ token, user }) {
                                     ? 'rounded-ee-[5px] bg-primary text-white'
                                     : 'rounded-es-[5px] border border-line bg-surface text-ink',
                                 )}>
+                                  {control?.canManage && !message.pending ? (
+                                    <div className="absolute -top-2.5 left-1 z-10 flex items-center gap-0.5 rounded-full border border-line bg-surface p-0.5 opacity-100 shadow-sm transition sm:opacity-0 sm:group-hover/msg:opacity-100 sm:focus-within:opacity-100">
+                                      <button type="button" onClick={() => togglePin(message)} title={message.isPinned ? 'إلغاء التثبيت' : 'تثبيت الرسالة'} aria-label={message.isPinned ? 'إلغاء التثبيت' : 'تثبيت الرسالة'} className={cn('grid size-6 place-items-center rounded-full transition hover:bg-surface-soft', message.isPinned ? 'text-primary' : 'text-muted')}>
+                                        <Pin size={11} className={message.isPinned ? 'fill-current' : ''} />
+                                      </button>
+                                      <button type="button" onClick={() => deleteMessage(message)} title="حذف الرسالة" aria-label="حذف الرسالة" className="grid size-6 place-items-center rounded-full text-muted transition hover:bg-danger-soft hover:text-danger">
+                                        <Trash2 size={11} />
+                                      </button>
+                                    </div>
+                                  ) : null}
                                   {showIdentity ? <p className="mb-1 text-[10.5px] font-extrabold text-primary">{message.senderName}</p> : null}
                                   {message.attachmentUrl ? (
                                     <a href={assetUrl(message.attachmentUrl)} target="_blank" rel="noreferrer" className="mb-1.5 block overflow-hidden rounded-[12px] border border-white/25">
@@ -537,6 +759,9 @@ export default function ChatPage({ token, user }) {
                                   ) : null}
                                   {message.body ? <p className="whitespace-pre-wrap break-words">{message.body}</p> : null}
                                   <span className={cn('mt-1 flex items-center justify-end gap-1 text-[9.5px] tabular-nums', mine ? 'text-white/70' : 'text-subtle')}>
+                                    {message.approvalPending ? (
+                                      <span className={cn('rounded-full px-1.5 py-0.5 text-[8.5px] font-bold', mine ? 'bg-white/20 text-white' : 'bg-warning-soft text-warning')}>بانتظار الموافقة</span>
+                                    ) : null}
                                     {timeFormatter.format(new Date(message.sentAtUtc))}
                                     {message.pending ? <LoaderCircle size={10} className="animate-spin" /> : mine && !activeConversation.isGroup ? (read ? <CheckCheck size={12} /> : <Check size={12} />) : null}
                                   </span>
@@ -565,6 +790,12 @@ export default function ChatPage({ token, user }) {
                 </div>
 
                 <div className="border-t border-line bg-surface p-2.5 sm:p-3">
+                  {thread && thread.canPost === false ? (
+                    <div className="mb-2 flex items-start gap-2 rounded-[11px] border border-warning/30 bg-warning-soft p-2.5 text-[11px] font-bold leading-5 text-warning">
+                      <Lock size={13} className="mt-0.5 shrink-0" />
+                      <span>{lockedReason}</span>
+                    </div>
+                  ) : null}
                   {attachment ? (
                     <div className="mb-2 flex items-center gap-2 rounded-[12px] border border-line bg-surface-soft p-2">
                       <img src={assetUrl(attachment)} alt="معاينة المرفق" className="size-12 rounded-[9px] object-cover" />
@@ -577,7 +808,7 @@ export default function ChatPage({ token, user }) {
                   ) : null}
                   <div className="flex items-end gap-1.5 sm:gap-2">
                     <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(event) => uploadImage(event.target.files?.[0])} />
-                    <IconButton label="إرفاق صورة" onClick={() => fileRef.current?.click()} disabled={uploading} className="mb-0.5">
+                    <IconButton label="إرفاق صورة" onClick={() => fileRef.current?.click()} disabled={uploading || thread?.canPost === false} className="mb-0.5">
                       {uploading ? <LoaderCircle size={16} className="animate-spin" /> : <Paperclip size={16} />}
                     </IconButton>
                     <textarea
@@ -585,9 +816,10 @@ export default function ChatPage({ token, user }) {
                       value={text}
                       onChange={(event) => setText(event.target.value)}
                       onKeyDown={onComposerKeyDown}
-                      placeholder="اكتب رسالتك هنا..."
+                      placeholder={thread?.canPost === false ? 'الإرسال مغلق حالياً...' : 'اكتب رسالتك هنا...'}
                       aria-label="نص الرسالة"
-                      className="max-h-32 min-h-11 flex-1 resize-none rounded-[12px] border border-line bg-surface-soft px-3.5 py-2.5 text-[13px] leading-6 text-ink outline-none transition placeholder:text-subtle focus:border-primary focus:bg-surface focus:ring-4 focus:ring-primary-soft"
+                      disabled={thread?.canPost === false}
+                      className="max-h-32 min-h-11 flex-1 resize-none rounded-[12px] border border-line bg-surface-soft px-3.5 py-2.5 text-[13px] leading-6 text-ink outline-none transition placeholder:text-subtle focus:border-primary focus:bg-surface focus:ring-4 focus:ring-primary-soft disabled:cursor-not-allowed disabled:opacity-60"
                     />
                     <Button icon={Send} onClick={sendMessage} loading={sending} disabled={!canSend} className="min-w-[84px]">إرسال</Button>
                   </div>
@@ -607,6 +839,153 @@ export default function ChatPage({ token, user }) {
           </AnimatePresence>
         </Card>
       </div>
+
+      <Modal
+        open={governanceOpen}
+        onClose={() => setGovernanceOpen(false)}
+        title="إدارة المحادثة"
+        description="الأوضاع، اعتماد الرسائل، الكتم، البحث وسجل التغييرات — كلها مُنفَّذة من الخادم."
+        icon={Settings2}
+        size="lg"
+      >
+        <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1">
+          {[
+            ['mode', 'الوضع', Megaphone],
+            ['pending', `الاعتماد${pending.length ? ` (${pending.length})` : ''}`, ShieldCheck],
+            ['members', 'الكتم', UserX],
+            ['search', 'بحث', Search],
+            ['audit', 'السجل', RefreshCw],
+          ].map(([key, label, TabIcon]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => { setGovernanceTab(key); if (key === 'audit' && audit.length === 0) loadAudit(); }}
+              className={cn(
+                'inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-[10px] border px-3 text-[11px] font-bold transition',
+                governanceTab === key ? 'border-primary bg-primary-soft text-primary' : 'border-line bg-surface text-muted hover:text-ink',
+              )}
+            >
+              <TabIcon size={12} />{label}
+            </button>
+          ))}
+        </div>
+
+        {governanceError ? <Alert tone="danger" className="mb-3" onClose={() => setGovernanceError('')}>{governanceError}</Alert> : null}
+
+        {governanceTab === 'mode' ? (
+          <div className="grid gap-2 pb-2">
+            <p className="text-[11px] leading-5 text-muted">اختر من يستطيع الإرسال في هذه المحادثة. التغيير يُطبَّق فوراً ويرسل إشعاراً للأعضاء.</p>
+            {(control?.allowedModes || []).length === 0 ? (
+              <p className="rounded-[10px] bg-surface-soft p-3 text-[11px] text-muted">هذه المحادثة الفردية لا تدعم أوضاع الإرسال؛ الإرسال متاح للطرفين.</p>
+            ) : (
+              control.allowedModes.map((mode) => {
+                const active = currentMode === mode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => changeMode(mode)}
+                    disabled={active || Boolean(governanceBusy)}
+                    className={cn(
+                      'flex min-h-11 items-center justify-between gap-2 rounded-[12px] border px-3 text-right text-[12px] font-bold transition',
+                      active ? 'border-primary bg-primary-soft text-primary' : 'border-line bg-surface text-ink hover:border-primary/40',
+                    )}
+                  >
+                    <span>{modeLabels[mode] || mode}</span>
+                    {governanceBusy === `mode-${mode}` ? <LoaderCircle size={14} className="animate-spin" /> : active ? <Badge tone="emerald">مفعّل</Badge> : null}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        ) : null}
+
+        {governanceTab === 'pending' ? (
+          <div className="grid gap-2 pb-2">
+            {pending.length === 0 ? (
+              <p className="rounded-[10px] bg-surface-soft p-3 text-[11px] text-muted">لا توجد رسائل بانتظار الاعتماد حالياً.</p>
+            ) : pending.map((item) => (
+              <div key={item.id} className="rounded-[12px] border border-line bg-surface p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-[11.5px] font-bold text-ink">{item.senderName || 'مستخدم'}</p>
+                  <span className="shrink-0 text-[9.5px] text-subtle">{inboxTime(item.sentAtUtc)}</span>
+                </div>
+                {item.attachmentUrl ? <img src={assetUrl(item.attachmentUrl)} alt="مرفق" className="mt-1.5 max-h-40 w-full rounded-[10px] object-cover" /> : null}
+                {item.body ? <p className="mt-1 line-clamp-3 text-[11.5px] leading-5 text-muted">{item.body}</p> : null}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <Button size="xs" icon={Check} loading={governanceBusy === `approve-${item.id}`} onClick={() => moderateMessage(item.id, 'approve')}>اعتماد</Button>
+                  <Button size="xs" variant="secondary" icon={X} loading={governanceBusy === `reject-${item.id}`} onClick={() => moderateMessage(item.id, 'reject')}>رفض</Button>
+                  <Button size="xs" variant="ghost" icon={UserX} loading={governanceBusy === `mute-${item.senderId}`} onClick={() => muteMember(item.senderId, true)}>كتم المرسل</Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {governanceTab === 'members' ? (
+          <div className="grid gap-2 pb-2">
+            <p className="text-[11px] leading-5 text-muted">الأعضاء المكتمون لا يمكنهم الإرسال حتى يتم رفع الكتم. يمكنك كتم المرسل من تبويب الاعتماد.</p>
+            {(control?.mutedMembers || []).length === 0 ? (
+              <p className="rounded-[10px] bg-surface-soft p-3 text-[11px] text-muted">لا يوجد أعضاء مكتمون حالياً.</p>
+            ) : control.mutedMembers.map((member) => (
+              <div key={member.userId} className="flex items-center justify-between gap-2 rounded-[12px] border border-line bg-surface p-2.5">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Avatar name={member.name} size="sm" />
+                  <div className="min-w-0">
+                    <p className="truncate text-[11.5px] font-bold text-ink">{member.name || 'عضو'}</p>
+                    <p className="text-[9.5px] text-subtle">{member.mutedUntilUtc ? `حتى ${formatShortDate(member.mutedUntilUtc)}` : 'بدون نهاية'}</p>
+                  </div>
+                </div>
+                <Button size="xs" variant="secondary" loading={governanceBusy === `mute-${member.userId}`} onClick={() => muteMember(member.userId, false)}>رفع الكتم</Button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {governanceTab === 'search' ? (
+          <div className="grid gap-2 pb-2">
+            <div className="flex gap-2">
+              <input
+                value={chatSearch}
+                onChange={(event) => setChatSearch(event.target.value)}
+                onKeyDown={(event) => { if (event.key === 'Enter') searchChat(); }}
+                placeholder="ابحث داخل رسائل المحادثة (حرفان على الأقل)"
+                className="h-10 min-w-0 flex-1 rounded-[10px] border border-line bg-surface px-3 text-[11.5px] text-ink outline-none transition focus:border-primary focus:ring-4 focus:ring-primary-soft"
+              />
+              <Button size="sm" icon={Search} loading={searching} disabled={chatSearch.trim().length < 2} onClick={searchChat}>بحث</Button>
+            </div>
+            {searchResults.length === 0 ? (
+              <p className="rounded-[10px] bg-surface-soft p-3 text-[11px] text-muted">لا نتائج بعد. اكتب كلمة ثم اضغط بحث.</p>
+            ) : searchResults.map((item) => (
+              <div key={item.id} className="rounded-[10px] border border-line bg-surface p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-[11px] font-bold text-ink">{item.senderName || 'مستخدم'} {item.isPinned ? <Pin size={10} className="inline text-primary" /> : null}</p>
+                  <span className="shrink-0 text-[9px] text-subtle">{inboxTime(item.sentAtUtc)}</span>
+                </div>
+                <p className="mt-0.5 text-[11px] leading-5 text-muted">{item.body}</p>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {governanceTab === 'audit' ? (
+          <div className="grid gap-1.5 pb-2">
+            {governanceBusy === 'audit' ? (
+              <div className="grid gap-1.5">{[0, 1, 2].map((index) => <Skeleton key={index} className="h-10 w-full" />)}</div>
+            ) : audit.length === 0 ? (
+              <p className="rounded-[10px] bg-surface-soft p-3 text-[11px] text-muted">لا توجد عمليات مسجلة بعد.</p>
+            ) : audit.map((item) => (
+              <div key={item.id} className="flex items-start justify-between gap-2 rounded-[10px] border border-line bg-surface p-2.5">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold text-ink">{auditLabels[item.action] || item.action}</p>
+                  <p className="mt-0.5 text-[9.5px] text-subtle">{item.actorName} · {item.details || '—'}</p>
+                </div>
+                <span className="shrink-0 text-[9px] text-subtle">{inboxTime(item.createdAtUtc)}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </Modal>
 
       <Modal
         open={contactsOpen}
