@@ -222,6 +222,9 @@ export default function ExamForm({ token, onBack, onCreated }) {
   const [durationMinutes, setDurationMinutes] = useState(45);
   const [maxAttempts, setMaxAttempts] = useState(1);
   const [allowResume, setAllowResume] = useState(true);
+  const [shuffleQuestions, setShuffleQuestions] = useState(true);
+  const [shuffleOptions, setShuffleOptions] = useState(true);
+  const [allowReviewPrevious, setAllowReviewPrevious] = useState(true);
   const [scheduledAt, setScheduledAt] = useState('');
   const [availableFrom, setAvailableFrom] = useState('');
   const [availableUntil, setAvailableUntil] = useState('');
@@ -312,6 +315,9 @@ export default function ExamForm({ token, onBack, onCreated }) {
           durationMinutes: Number(durationMinutes),
           maxAttempts: Number(maxAttempts),
           allowResumeAfterFocusLoss: allowResume,
+          shuffleQuestions,
+          shuffleOptions,
+          allowReviewPrevious,
           scheduledAtUtc: cairoInputToUtcIso(scheduledAt),
           availableFromUtc: cairoInputToUtcIso(availableFrom),
           availableUntilUtc: cairoInputToUtcIso(availableUntil),
@@ -393,6 +399,12 @@ export default function ExamForm({ token, onBack, onCreated }) {
                 </Select>
               </Field>
               <Checkbox label="السماح للطالب باستكمال المحاولة إذا غادر الصفحة أو انقطع اتصاله. عند الإيقاف، يُحتسب خروج الطالب ضمن سجل المحاولة." checked={allowResume} onChange={(event) => setAllowResume(event.target.checked)} />
+              <div className="grid gap-2 rounded-[12px] border border-line bg-surface-soft/60 p-3">
+                <p className="text-[12px] font-bold text-ink">عرض الأسئلة والاختيارات</p>
+                <Checkbox label="ترتيب الأسئلة عشوائياً لكل طالب (ترتيب ثابت له ولا يتغير عند التحديث)" checked={shuffleQuestions} onChange={(event) => setShuffleQuestions(event.target.checked)} />
+                <Checkbox label="ترتيب اختيارات كل سؤال عشوائياً لكل طالب" checked={shuffleOptions} onChange={(event) => setShuffleOptions(event.target.checked)} />
+                <Checkbox label="السماح للطالب بالرجوع إلى سؤال أجاب عنه. عند الإيقاف، يُقفل السؤال بمجرد الانتقال منه." checked={allowReviewPrevious} onChange={(event) => setAllowReviewPrevious(event.target.checked)} />
+              </div>
             </div>
           </Card>
 

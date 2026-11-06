@@ -76,7 +76,13 @@ function MatchingInput({ question, value, onChange }) {
     const [left, right] = String(pair).split('||');
     return { left: left || '', right: right || '' };
   });
-  const [order] = useState(() => shuffleIndices(pairs.length, hashCode(question.id)));
+  // The server sends a per-student order for the right-hand column so the same
+  // student always sees the same arrangement while classmates see different ones.
+  const order = useMemo(() => {
+    const provided = Array.isArray(question.optionOrder) ? question.optionOrder.map(Number) : null;
+    if (provided && provided.length === pairs.length && provided.every((item) => item >= 0 && item < pairs.length)) return provided;
+    return shuffleIndices(pairs.length, hashCode(question.id));
+  }, [question.optionOrder, question.id, pairs.length]);
   const selected = String(value || '').split(',').map((item) => item === '' ? -1 : Number(item));
   function choose(pairIndex, optionIndex) {
     const next = pairs.map((_, index) => selected[index] ?? -1);
@@ -192,11 +198,22 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
   const [focusWarning, setFocusWarning] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    const raw = Number(paper.currentQuestionIndex);
+    const max = Math.max(0, (paper.questions || []).length - 1);
+    return Number.isFinite(raw) ? Math.min(Math.max(0, raw), max) : 0;
+  });
+  const [lockedIds, setLockedIds] = useState(() => new Set(Array.isArray(paper.lockedQuestionIds) ? paper.lockedQuestionIds : []));
+  const [notice, setNotice] = useState('');
   const [reviewMode, setReviewMode] = useState(false);
   const frozenRemainingRef = useRef(null);
+  const restrictNavigation = paper.allowReviewPrevious === false;
 
   const answersRef = useRef(answers);
+  const currentIndexRef = useRef(currentIndex);
+  useEffect(() => { currentIndexRef.current = currentIndex; }, [currentIndex]);
+  const lockedIdsRef = useRef(lockedIds);
+  useEffect(() => { lockedIdsRef.current = lockedIds; }, [lockedIds]);
   const answerVersionRef = useRef(0);
   const dirtyRef = useRef(false);
   const focusLossRef = useRef(false);
@@ -232,6 +249,10 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
   const lowTime = displayedRemaining <= 300;
 
   function setAnswer(questionId, value) {
+    if (lockedIdsRef.current.has(questionId)) {
+      setNotice('لا يمكن تعديل هذا السؤال: تم قفله بعد الانتقال منه وفق إعدادات المدرس.');
+      return;
+    }
     setAnswers((current) => {
       const next = { ...current, [questionId]: value };
       answersRef.current = next;
@@ -252,14 +273,25 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
     const version = answerVersionRef.current;
     const snapshot = answersRef.current;
     try {
-      await request(`/api/submissions/${submissionId}/answers`, {
+      const result = await request(`/api/submissions/${submissionId}/answers`, {
         token,
         method: 'PUT',
         body: JSON.stringify({
           answers: Object.entries(snapshot).map(([questionId, answerText]) => ({ questionId, answerText: String(answerText) })),
           focusLossDetected: focusLossRef.current,
+          currentIndex: currentIndexRef.current,
         }),
       });
+      if (Array.isArray(result?.lockedQuestionIds) && result.lockedQuestionIds.length) {
+        setLockedIds((previous) => {
+          const next = new Set(previous);
+          result.lockedQuestionIds.forEach((id) => next.add(id));
+          return next;
+        });
+      }
+      if (Number.isInteger(result?.currentQuestionIndex)) {
+        setCurrentIndex((previous) => Math.max(previous, result.currentQuestionIndex));
+      }
       if (answerVersionRef.current === version) {
         dirtyRef.current = false;
         setSaveState('saved');
@@ -289,6 +321,7 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
         body: JSON.stringify({
           answers: Object.entries(answersRef.current).map(([questionId, answerText]) => ({ questionId, answerText: String(answerText) })),
           focusLossDetected: focusLossRef.current,
+          currentIndex: currentIndexRef.current,
         }),
       });
       try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
@@ -391,7 +424,25 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
   function goToQuestion(index) {
     if (!questions.length) return;
     const next = Math.min(Math.max(0, index), questions.length - 1);
+    const target = questions[next];
+    if (target && lockedIdsRef.current.has(target.id)) {
+      setNotice('لا يمكن الرجوع إلى سؤال أجاب عنه الطالب وانتقل منه، وفق إعدادات المدرس.');
+      return;
+    }
+    // When review is disabled, leaving an answered question locks it for good.
+    const leaving = questions[currentIndex];
+    if (restrictNavigation && next !== currentIndex && leaving && String(answersRef.current[leaving.id] || '').trim()) {
+      setLockedIds((previous) => {
+        if (previous.has(leaving.id)) return previous;
+        const updated = new Set(previous);
+        updated.add(leaving.id);
+        lockedIdsRef.current = updated;
+        return updated;
+      });
+    }
+    setNotice('');
     setCurrentIndex(next);
+    currentIndexRef.current = next;
     setReviewMode(false);
     setMobileNavOpen(false);
     if (!paused && !submittedRef.current) save(true).catch(() => {});
@@ -412,6 +463,7 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
     .filter(({ question }) => !String(answers[question.id] || '').trim());
   const questionStatus = (question, index) => {
     if (index === currentIndex && !reviewMode) return 'current';
+    if (lockedIds.has(question.id)) return 'locked';
     return String(answers[question.id] || '').trim() ? 'answered' : 'unanswered';
   };
 
@@ -464,6 +516,8 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
           <Alert tone="warning" className="mb-4" onClose={() => setFocusWarning(false)}>تم رصد خروجك من صفحة الامتحان أو محاولة نسخ. النسخ واللصق والطباعة وتصوير الشاشة محظورة، وكل محاولة تُسجَّل باسمك في تقرير المحاولة.</Alert>
         ) : null}
         {error ? <Alert tone="danger" className="mb-4" onClose={() => setError('')}>{error}</Alert> : null}
+        {notice ? <Alert tone="info" className="mb-4" onClose={() => setNotice('')}>{notice}</Alert> : null}
+        {restrictNavigation ? <Alert tone="info" className="mb-4">وفق إعدادات المدرس، لا يمكن الرجوع إلى سؤال أجبت عنه بعد الانتقال منه. يمكنك الرجوع إلى الأسئلة التي لم تجب عنها فقط.</Alert> : null}
         <div className="mb-4 flex items-start gap-2.5 rounded-[14px] border border-line bg-surface/85 px-3.5 py-2.5 text-[11px] leading-5 text-muted backdrop-blur-sm">
           <ShieldAlert size={15} className="mt-0.5 shrink-0 text-emerald" />
           <p><strong className="font-bold text-ink">وضع الحماية مفعّل.</strong> لا يمكن نسخ أو لصق أو طباعة أسئلة الامتحان، وتُسجَّل محاولات تصوير أو تسجيل الشاشة ضد حسابك.</p>
@@ -502,28 +556,30 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
               <div className="grid gap-2">
                 {questions.map((question, index) => {
                   const value = String(answers[question.id] || '').trim();
+                  const locked = lockedIds.has(question.id);
                   return (
                     <button
                       key={question.id}
                       type="button"
                       onClick={() => goToQuestion(index)}
                       className={cn(
-                        'flex items-start gap-3 rounded-[12px] border p-3 text-right transition hover:border-primary/40',
-                        value ? 'border-emerald/20 bg-emerald-soft/30' : 'border-warning/25 bg-warning-soft/30',
+                        'flex items-start gap-3 rounded-[12px] border p-3 text-right transition',
+                        locked ? 'border-line bg-surface-soft/60' : 'hover:border-primary/40',
+                        !locked && (value ? 'border-emerald/20 bg-emerald-soft/30' : 'border-warning/25 bg-warning-soft/30'),
                       )}
                       data-testid={`review-question-${index}`}
                     >
-                      <span className={cn('grid size-8 shrink-0 place-items-center rounded-[8px] text-[11px] font-bold', value ? 'bg-emerald text-white' : 'bg-warning text-white')}>{formatNumber(index + 1)}</span>
+                      <span className={cn('grid size-8 shrink-0 place-items-center rounded-[8px] text-[11px] font-bold', locked ? 'bg-surface-soft text-muted ring-1 ring-line' : value ? 'bg-emerald text-white' : 'bg-warning text-white')}>{locked ? <LockKeyhole size={12} /> : formatNumber(index + 1)}</span>
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-1.5">
                           <span className="text-[12.5px] font-bold text-ink">السؤال {formatNumber(index + 1)}</span>
                           <Badge tone="neutral">{typeLabels[question.type] || question.type}</Badge>
-                          <Badge tone={value ? 'emerald' : 'warning'}>{value ? 'تمت الإجابة' : 'بدون إجابة'}</Badge>
+                          <Badge tone={locked ? 'neutral' : value ? 'emerald' : 'warning'}>{locked ? 'مقفل' : value ? 'تمت الإجابة' : 'بدون إجابة'}</Badge>
                         </span>
                         <span className="mt-1 block truncate text-[11.5px] text-muted">{question.text}</span>
                         {value ? <span className="mt-1 block truncate text-[10.5px] text-subtle">إجابتك: {value.slice(0, 120)}</span> : null}
                       </span>
-                      <span className="shrink-0 self-center text-[10.5px] font-bold text-primary">عرض</span>
+                      <span className={cn('shrink-0 self-center text-[10.5px] font-bold', locked ? 'text-subtle' : 'text-primary')}>{locked ? 'مقفل' : 'عرض'}</span>
                     </button>
                   );
                 })}
@@ -595,10 +651,11 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
                           className={cn(
                             'grid size-10 place-items-center rounded-[9px] border text-[12px] font-bold transition',
                             status === 'current' ? 'border-primary bg-primary text-white ring-2 ring-primary/20'
-                              : status === 'answered' ? 'border-emerald/30 bg-emerald-soft text-emerald hover:border-emerald'
-                                : 'border-line bg-surface-soft text-muted hover:border-primary/40 hover:text-primary',
+                              : status === 'locked' ? 'border-line bg-surface-soft text-subtle'
+                                : status === 'answered' ? 'border-emerald/30 bg-emerald-soft text-emerald hover:border-emerald'
+                                  : 'border-line bg-surface-soft text-muted hover:border-primary/40 hover:text-primary',
                           )}
-                        >{formatNumber(index + 1)}</button>
+                        >{status === 'locked' ? <LockKeyhole size={12} /> : formatNumber(index + 1)}</button>
                       );
                     })}
                   </div>
@@ -606,6 +663,7 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
                     <span className="flex items-center gap-1"><span className="size-2 rounded bg-primary" />السؤال الحالي</span>
                     <span className="flex items-center gap-1"><span className="size-2 rounded bg-emerald-soft ring-1 ring-emerald/30" />تمت الإجابة</span>
                     <span className="flex items-center gap-1"><span className="size-2 rounded border border-line bg-surface" />بدون إجابة</span>
+                    {restrictNavigation ? <span className="flex items-center gap-1"><LockKeyhole size={9} />مقفل نهائياً</span> : null}
                   </div>
                   <div className="my-3 border-t border-line" />
                   <div className="rounded-[11px] bg-surface-soft p-3">
@@ -639,10 +697,11 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
                       className={cn(
                         'grid h-10 place-items-center rounded-[8px] border text-[12px] font-bold',
                         status === 'current' ? 'border-primary bg-primary text-white'
-                          : status === 'answered' ? 'border-emerald/30 bg-emerald-soft text-emerald'
-                            : 'border-line bg-surface-soft text-muted',
+                          : status === 'locked' ? 'border-line bg-surface-soft text-subtle'
+                            : status === 'answered' ? 'border-emerald/30 bg-emerald-soft text-emerald'
+                              : 'border-line bg-surface-soft text-muted',
                       )}
-                    >{formatNumber(index + 1)}</button>
+                    >{status === 'locked' ? <LockKeyhole size={12} /> : formatNumber(index + 1)}</button>
                   );
                 })}
               </div>

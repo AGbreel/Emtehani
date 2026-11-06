@@ -117,6 +117,14 @@ public static class ExamWorkflowSchema
                 END;
                 IF COL_LENGTH('dbo.Exams', 'ResultsReleaseMode') IS NULL
                     ALTER TABLE [Exams] ADD [ResultsReleaseMode] nvarchar(32) NULL;
+                IF COL_LENGTH('dbo.Exams', 'ShuffleQuestions') IS NULL
+                    ALTER TABLE [Exams] ADD [ShuffleQuestions] bit NOT NULL CONSTRAINT [DF_Exams_ShuffleQuestions] DEFAULT 1;
+                IF COL_LENGTH('dbo.Exams', 'ShuffleOptions') IS NULL
+                    ALTER TABLE [Exams] ADD [ShuffleOptions] bit NOT NULL CONSTRAINT [DF_Exams_ShuffleOptions] DEFAULT 1;
+                IF COL_LENGTH('dbo.Exams', 'AllowReviewPrevious') IS NULL
+                    ALTER TABLE [Exams] ADD [AllowReviewPrevious] bit NOT NULL CONSTRAINT [DF_Exams_AllowReviewPrevious] DEFAULT 1;
+                IF COL_LENGTH('dbo.Submissions', 'CurrentQuestionIndex') IS NULL
+                    ALTER TABLE [Submissions] ADD [CurrentQuestionIndex] int NOT NULL CONSTRAINT [DF_Submissions_CurrentQuestionIndex] DEFAULT 0;
                 """, cancellationToken);
             await db.Database.ExecuteSqlRawAsync("""
                 IF COL_LENGTH('dbo.Users', 'RefreshTokenHash') IS NULL
@@ -513,6 +521,10 @@ public static class ExamWorkflowSchema
                     END IF;
                 END $$;
                 ALTER TABLE "Exams" ADD COLUMN IF NOT EXISTS "ResultsReleaseMode" character varying(32) NULL;
+                ALTER TABLE "Exams" ADD COLUMN IF NOT EXISTS "ShuffleQuestions" boolean NOT NULL DEFAULT TRUE;
+                ALTER TABLE "Exams" ADD COLUMN IF NOT EXISTS "ShuffleOptions" boolean NOT NULL DEFAULT TRUE;
+                ALTER TABLE "Exams" ADD COLUMN IF NOT EXISTS "AllowReviewPrevious" boolean NOT NULL DEFAULT TRUE;
+                ALTER TABLE "Submissions" ADD COLUMN IF NOT EXISTS "CurrentQuestionIndex" integer NOT NULL DEFAULT 0;
                 ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "RefreshTokenHash" character varying(64) NULL;
                 ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "RefreshTokenExpiresUtc" timestamp with time zone NULL;
                 ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "RefreshTokenCreatedAtUtc" timestamp with time zone NULL;

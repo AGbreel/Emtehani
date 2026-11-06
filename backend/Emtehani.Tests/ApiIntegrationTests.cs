@@ -501,6 +501,72 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
     }
 
     [Fact]
+    public async Task ExamSettings_LockAnsweredQuestionsWhenReviewIsDisabled()
+    {
+        var (teacher, _) = await RegisterAndLogin(Email("settings-teacher"), "Teacher", "مدرس إعدادات العرض");
+        var (student, studentAuth) = await RegisterAndLogin(Email("settings-student"), "Student", "طالب إعدادات العرض");
+        await EnrollStudent(teacher, student);
+
+        var create = await teacher.PostAsJsonAsync("/api/exams", new
+        {
+            title = "اختبار قفل الرجوع",
+            description = "وصف",
+            durationMinutes = 30,
+            maxAttempts = 1,
+            allowResumeAfterFocusLoss = true,
+            shuffleQuestions = true,
+            shuffleOptions = true,
+            allowReviewPrevious = false,
+            stage = DefaultStage,
+            grade = DefaultGrade,
+            questions = new object[]
+            {
+                new { text = "سؤال أول", type = "MultipleChoice", options = new[] { "3", "4" }, correctAnswer = "4", points = 2 },
+                new { text = "سؤال ثان", type = "TrueFalse", options = Array.Empty<string>(), correctAnswer = "صح", points = 1 }
+            }
+        });
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        var examId = GuidValue((await ReadJson(create))["id"]);
+        Assert.Equal(HttpStatusCode.OK, (await teacher.PutAsync($"/api/exams/{examId}/publish", null)).StatusCode);
+
+        // Settings stay editable until the first attempt exists.
+        var settings = await teacher.PutAsJsonAsync($"/api/exams/{examId}/settings", new { shuffleQuestions = false, shuffleOptions = true, allowReviewPrevious = false });
+        Assert.Equal(HttpStatusCode.OK, settings.StatusCode);
+        var applied = await ReadJson(settings);
+        Assert.False(applied["shuffleQuestions"]!.GetValue<bool>());
+        Assert.False(applied["allowReviewPrevious"]!.GetValue<bool>());
+
+        var joined = await student.PostAsJsonAsync("/api/exams/enter-code", new { code = StudentCode(studentAuth) });
+        Assert.Equal(HttpStatusCode.OK, joined.StatusCode);
+        await OpenExam(teacher, examId);
+        var submissionId = await StartAttempt(student, examId);
+
+        var paper = await ReadJson(await student.GetAsync($"/api/exams/{examId}/paper"));
+        Assert.False(paper["allowReviewPrevious"]!.GetValue<bool>());
+        Assert.Empty(paper["lockedQuestionIds"]!.AsArray());
+        // Shuffle was disabled above, so the paper keeps the authoring order.
+        Assert.Equal("سؤال أول", paper["questions"]![0]!["text"]!.GetValue<string>());
+
+        var firstId = GuidValue(paper["questions"]![0]!["id"]);
+        var firstAnswer = "4";
+        var save = await student.PutAsJsonAsync($"/api/submissions/{submissionId}/answers",
+            new { answers = new[] { new { questionId = firstId, answerText = firstAnswer } }, currentIndex = 1 });
+        Assert.Equal(HttpStatusCode.OK, save.StatusCode);
+        var saved = await ReadJson(save);
+        Assert.Contains(saved["lockedQuestionIds"]!.AsArray(), id => GuidValue(id!) == firstId);
+
+        // Editing a locked question after moving on must be ignored by the server.
+        var retry = await student.PutAsJsonAsync($"/api/submissions/{submissionId}/answers",
+            new { answers = new[] { new { questionId = firstId, answerText = "3" } }, currentIndex = 1 });
+        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+        var after = await ReadJson(await student.GetAsync($"/api/exams/{examId}/paper"));
+        Assert.Equal(firstAnswer, after["answers"]!.AsArray().Single(a => GuidValue(a!["questionId"]) == firstId)!["answerText"]!.GetValue<string>());
+
+        var blocked = await teacher.PutAsJsonAsync($"/api/exams/{examId}/settings", new { shuffleQuestions = true, shuffleOptions = true, allowReviewPrevious = true });
+        Assert.Equal(HttpStatusCode.Conflict, blocked.StatusCode);
+    }
+
+    [Fact]
     public async Task GrantExtraAttempt_RejectsDuplicateGrant_AndAllowsGrantForNextAttempt()
     {
         var (teacher, _) = await RegisterAndLogin(Email("grant-teacher"), "Teacher", "مدرس منح المحاولات");

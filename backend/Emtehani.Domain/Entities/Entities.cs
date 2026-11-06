@@ -57,6 +57,12 @@ public sealed class Exam
     public DateTime? ResultsPublishedAtUtc { get; set; }
     // null preserves the legacy behaviour (teacher must explicitly publish after the exam ends).
     public string? ResultsReleaseMode { get; set; }
+    /// <summary>Per-student question order. The paper is deterministic for each student.</summary>
+    public bool ShuffleQuestions { get; set; } = true;
+    /// <summary>Per-student option order for MultipleChoice questions (Matching keeps its pairs).</summary>
+    public bool ShuffleOptions { get; set; } = true;
+    /// <summary>When false, a student cannot reopen a question they already answered.</summary>
+    public bool AllowReviewPrevious { get; set; } = true;
     public List<Question> Questions { get; set; } = [];
     public List<ExamParticipant> Participants { get; set; } = [];
 }
@@ -107,6 +113,8 @@ public sealed class Submission
     public int AttemptNumber { get; set; } = 1;
     public bool IsExceptionAttempt { get; set; }
     public int ExtraTimeSeconds { get; set; }
+    /// <summary>Last question position (in the student's shuffled order) the student has reached.</summary>
+    public int CurrentQuestionIndex { get; set; }
     // Immutable snapshots taken when the attempt starts. Later profile or exam edits
     // must never rewrite the academic context of an old attempt.
     public string? StageAtAttempt { get; set; }

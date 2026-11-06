@@ -6,6 +6,7 @@ import {
   BarChart3,
   Clock3,
   Download,
+  ListChecks,
   LockKeyhole,
   Play,
   Radio,
@@ -23,6 +24,7 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   EmptyState,
   Field,
   Input,
@@ -56,6 +58,9 @@ export default function TeacherExamDetail({ token, exam: initialExam, onBack, on
   const [availableFrom, setAvailableFrom] = useState('');
   const [availableUntil, setAvailableUntil] = useState('');
   const [resultsReleaseMode, setResultsReleaseMode] = useState('');
+  const [shuffleQuestions, setShuffleQuestions] = useState(initialExam?.shuffleQuestions ?? true);
+  const [shuffleOptions, setShuffleOptions] = useState(initialExam?.shuffleOptions ?? true);
+  const [allowReviewPrevious, setAllowReviewPrevious] = useState(initialExam?.allowReviewPrevious ?? true);
 
   function toLocalInput(value) {
     return toCairoInputValue(value);
@@ -89,7 +94,7 @@ export default function TeacherExamDetail({ token, exam: initialExam, onBack, on
     if (!initialExam?.id) return;
     let active = true;
     request(`/api/exams/${initialExam.id}`, { token })
-      .then((meta) => { if (active) { setExam((current) => ({ ...current, ...meta, status: current.status === 'Active' || current.status === 'Paused' ? current.status : meta.status })); setAvailableFrom(toLocalInput(meta.availableFromUtc)); setAvailableUntil(toLocalInput(meta.availableUntilUtc)); setResultsReleaseMode(meta.resultsReleaseMode || ''); } })
+      .then((meta) => { if (active) { setExam((current) => ({ ...current, ...meta, status: current.status === 'Active' || current.status === 'Paused' ? current.status : meta.status })); setAvailableFrom(toLocalInput(meta.availableFromUtc)); setAvailableUntil(toLocalInput(meta.availableUntilUtc)); setResultsReleaseMode(meta.resultsReleaseMode || ''); setShuffleQuestions(meta.shuffleQuestions !== false); setShuffleOptions(meta.shuffleOptions !== false); setAllowReviewPrevious(meta.allowReviewPrevious !== false); } })
       .catch(() => {});
     return () => { active = false; };
   }, [token, initialExam?.id]);
@@ -192,6 +197,25 @@ export default function TeacherExamDetail({ token, exam: initialExam, onBack, on
     }
   }
 
+  async function saveExamSettings() {
+    setBusy('settings');
+    setError('');
+    setNotice('');
+    try {
+      const result = await request(`/api/exams/${exam.id}/settings`, {
+        token,
+        method: 'PUT',
+        body: JSON.stringify({ shuffleQuestions, shuffleOptions, allowReviewPrevious }),
+      });
+      setExam((current) => ({ ...current, ...result }));
+      setNotice('تم تحديث إعدادات عرض الأسئلة.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy('');
+    }
+  }
+
   async function exportResults() {
     setBusy('export-results');
     setError('');
@@ -207,6 +231,7 @@ export default function TeacherExamDetail({ token, exam: initialExam, onBack, on
 
   const total = counts?.total ?? participants.length;
   const openAllowed = ['Draft', 'Scheduled', 'Waiting'].includes(exam.status);
+  const settingsLocked = (counts?.active || 0) + (counts?.submitted || 0) > 0 || ['Active', 'Paused', 'Finished'].includes(exam.status);
 
   return (
     <div>
@@ -371,6 +396,19 @@ export default function TeacherExamDetail({ token, exam: initialExam, onBack, on
         </Card>
 
         <div className="grid content-start gap-3">
+          <Card className="p-5">
+            <div className="mb-3 flex items-center justify-between"><h3 className="font-display text-[14px] font-semibold text-ink">عرض الأسئلة والاختيارات</h3><ListChecks size={16} className="text-primary" /></div>
+            <div className="grid gap-2">
+              <Checkbox label="ترتيب الأسئلة عشوائياً لكل طالب" checked={shuffleQuestions} onChange={(event) => setShuffleQuestions(event.target.checked)} />
+              <Checkbox label="ترتيب الاختيارات عشوائياً لكل طالب" checked={shuffleOptions} onChange={(event) => setShuffleOptions(event.target.checked)} />
+              <Checkbox label="السماح بالرجوع إلى سؤال تمت الإجابة عنه" checked={allowReviewPrevious} onChange={(event) => setAllowReviewPrevious(event.target.checked)} />
+            </div>
+            <Button size="sm" icon={Save} className="mt-3 w-full" loading={busy === 'settings'} disabled={settingsLocked} onClick={saveExamSettings}>حفظ إعدادات العرض</Button>
+            <p className="mt-2 text-[10.5px] leading-5 text-subtle">
+              {settingsLocked ? 'لا يمكن تغيير هذه الإعدادات بعد بدء أول محاولة.' : 'الترتيب ثابت لكل طالب ولا يتغير عند تحديث الصفحة، ويختلف من طالب لآخر.'}
+            </p>
+          </Card>
+
           <Card className="p-5">
             <div className="mb-3 flex items-center justify-between"><h3 className="font-display text-[14px] font-semibold text-ink">إجراءات الجلسة</h3><LockKeyhole size={16} className="text-primary" /></div>
             {exam.status === 'Active' ? (
