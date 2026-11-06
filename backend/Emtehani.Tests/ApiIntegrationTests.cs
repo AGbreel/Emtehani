@@ -549,6 +549,15 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
 
         var firstId = GuidValue(paper["questions"]![0]!["id"]);
         var firstAnswer = "4";
+
+        // While the student is still on the question, further edits are accepted.
+        Assert.Equal(HttpStatusCode.OK, (await student.PutAsJsonAsync($"/api/submissions/{submissionId}/answers",
+            new { answers = new[] { new { questionId = firstId, answerText = "4" } }, currentIndex = 0 })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await student.PutAsJsonAsync($"/api/submissions/{submissionId}/answers",
+            new { answers = new[] { new { questionId = firstId, answerText = firstAnswer } }, currentIndex = 0 })).StatusCode);
+        var stayPaper = await ReadJson(await student.GetAsync($"/api/exams/{examId}/paper"));
+        Assert.Equal(firstAnswer, stayPaper["answers"]!.AsArray().Single(a => GuidValue(a!["questionId"]) == firstId)!["answerText"]!.GetValue<string>());
+
         var save = await student.PutAsJsonAsync($"/api/submissions/{submissionId}/answers",
             new { answers = new[] { new { questionId = firstId, answerText = firstAnswer } }, currentIndex = 1 });
         Assert.Equal(HttpStatusCode.OK, save.StatusCode);

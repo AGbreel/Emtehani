@@ -3730,13 +3730,18 @@ app.MapPut("/api/submissions/{id:guid}/answers", async (Guid id, SubmitRequest r
   var orderedQuestions = ExamPaperOrder.Order(questions, examInfo.ShuffleQuestions, examInfo.Id, uid);
   var questionIndex = orderedQuestions.Select((q, i) => (q.Id, i)).ToDictionary(x => x.Id, x => x.i);
   var lockedQuestionIds = new HashSet<Guid>();
+  var viewedIndex = sub.CurrentQuestionIndex;
   if (!examInfo.AllowReviewPrevious)
   {
     var lastIndex = Math.Max(0, orderedQuestions.Count - 1);
     var requested = req.CurrentIndex is int index ? Math.Clamp(index, 0, lastIndex) : sub.CurrentQuestionIndex;
+    viewedIndex = requested;
     sub.CurrentQuestionIndex = Math.Clamp(Math.Max(sub.CurrentQuestionIndex, requested), 0, lastIndex);
     var answeredIds = sub.Answers.Where(x => !string.IsNullOrWhiteSpace(x.AnswerText)).Select(x => x.QuestionId).ToHashSet();
+    // The question currently on screen stays editable even if the student reached a
+    // later index earlier; it locks once they move away from it.
     lockedQuestionIds = orderedQuestions.Take(sub.CurrentQuestionIndex)
+      .Where((q, index) => index != viewedIndex)
       .Where(q => answeredIds.Contains(q.Id)).Select(q => q.Id).ToHashSet();
   }
   foreach (var a in (req.Answers ?? []).Where(a => questionIndex.ContainsKey(a.QuestionId) && !lockedQuestionIds.Contains(a.QuestionId)).GroupBy(a => a.QuestionId).Select(g => g.Last()))
@@ -3753,6 +3758,7 @@ app.MapPut("/api/submissions/{id:guid}/answers", async (Guid id, SubmitRequest r
   if (!examInfo.AllowReviewPrevious)
   {
     lockedQuestionIds = orderedQuestions.Take(sub.CurrentQuestionIndex)
+      .Where((q, index) => index != viewedIndex)
       .Where(q => sub.Answers.Any(a => a.QuestionId == q.Id && !string.IsNullOrWhiteSpace(a.AnswerText)))
       .Select(q => q.Id).ToHashSet();
   }
@@ -3811,7 +3817,9 @@ app.MapPost("/api/submissions/{id:guid}/submit", async (Guid id, SubmitRequest? 
       var requested = req?.CurrentIndex is int index ? Math.Clamp(index, 0, lastIndex) : sub.CurrentQuestionIndex;
       sub.CurrentQuestionIndex = Math.Clamp(Math.Max(sub.CurrentQuestionIndex, requested), 0, lastIndex);
       var answeredIds = sub.Answers.Where(x => !string.IsNullOrWhiteSpace(x.AnswerText)).Select(x => x.QuestionId).ToHashSet();
+      // The question the student is still on may be edited; the rest lock behind it.
       lockedQuestionIds = orderedQuestions.Take(sub.CurrentQuestionIndex)
+        .Where((q, index) => index != requested)
         .Where(q => answeredIds.Contains(q.Id)).Select(q => q.Id).ToHashSet();
     }
     foreach (var input in (req?.Answers ?? new List<AnswerInput>()).Where(a => validQuestionIds.Contains(a.QuestionId) && !lockedQuestionIds.Contains(a.QuestionId)).GroupBy(a => a.QuestionId).Select(g => g.Last()))
