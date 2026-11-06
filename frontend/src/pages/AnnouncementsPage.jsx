@@ -37,7 +37,9 @@ export default function AnnouncementsPage({ token, role = 'Teacher' }) {
   const isStudent = role === 'Student';
   const isAdmin = role === 'Admin';
   const basePath = isAdmin ? '/api/admin/announcements' : '/api/teaching/announcements';
-  const listPath = isStudent ? '/api/teaching/my/announcements?take=60' : basePath;
+  const listPath = isStudent
+    ? '/api/teaching/my/announcements?take=60'
+    : `${basePath}?take=100`;
 
   const [items, setItems] = useState([]);
   const [groups, setGroups] = useState([]);
@@ -64,14 +66,14 @@ export default function AnnouncementsPage({ token, role = 'Teacher' }) {
     setError('');
     try {
       const requests = [request(listPath, { token })];
-      if (!isStudent) {
+      if (!isStudent && !isAdmin) {
         requests.push(request('/api/teaching/groups', { token }).catch(() => ({ items: [] })));
         requests.push(request('/api/teaching/courses?pageSize=100', { token }).catch(() => ({ items: [] })));
         requests.push(request('/api/teacher/students', { token }).catch(() => ({ items: [] })));
       }
       const [list, groupData, courseData, studentData] = await Promise.all(requests);
       setItems(list?.items || []);
-      if (!isStudent) {
+      if (!isStudent && !isAdmin) {
         setGroups(groupData?.items || []);
         setCourses(courseData?.items || []);
         setStudents(studentData?.items || []);

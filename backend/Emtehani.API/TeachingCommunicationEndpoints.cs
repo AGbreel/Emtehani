@@ -21,19 +21,19 @@ public static class TeachingCommunicationEndpoints
     {
         // ------------------------------ teacher ------------------------------
         app.MapGet("/api/teaching/announcements", async (
-            string? audience, Guid? groupId, Guid? courseId, bool? published, int take, ClaimsPrincipal p, AppDbContext db) =>
+            string? audience, Guid? groupId, Guid? courseId, bool? published, int? take, ClaimsPrincipal p, AppDbContext db) =>
         {
             var (scope, error) = await TeachingAccess.RequireAsync(db, p, TeachingPermissions.AnnouncementsManage);
             if (error is not null) return error;
             if (scope is null) return TeachingAccess.Deny();
-            take = Math.Clamp(take == 0 ? 50 : take, 1, 100);
+            var limit = Math.Clamp(take is null or 0 ? 50 : take.Value, 1, 100);
             var query = db.Announcements.AsNoTracking().Where(x => x.TeacherId == scope.TeacherId);
             if (!string.IsNullOrWhiteSpace(audience)) query = query.Where(x => x.Audience == audience);
             if (groupId is not null) query = query.Where(x => x.GroupId == groupId);
             if (courseId is not null) query = query.Where(x => x.CourseId == courseId);
             if (published is not null) query = query.Where(x => x.IsPublished == published);
             var items = await query.OrderByDescending(x => x.IsPinned).ThenByDescending(x => x.CreatedAtUtc)
-                .Take(take).ToListAsync();
+                .Take(limit).ToListAsync();
             return Results.Ok(new { items = items.Select(View) });
         }).RequireAuthorization().RequireRateLimiting("api");
 
@@ -148,15 +148,15 @@ public static class TeachingCommunicationEndpoints
 
         // ------------------------------ admin --------------------------------
         app.MapGet("/api/admin/announcements", async (
-            string? audience, bool? published, int take, ClaimsPrincipal p, AppDbContext db) =>
+            string? audience, bool? published, int? take, ClaimsPrincipal p, AppDbContext db) =>
         {
             if (!IsAdmin(p)) return TeachingAccess.Deny("هذا الإجراء لإدارة المنصة فقط.");
-            take = Math.Clamp(take == 0 ? 50 : take, 1, 100);
+            var limit = Math.Clamp(take is null or 0 ? 50 : take.Value, 1, 100);
             var query = db.Announcements.AsNoTracking().Where(x => x.TeacherId == null);
             if (!string.IsNullOrWhiteSpace(audience)) query = query.Where(x => x.Audience == audience);
             if (published is not null) query = query.Where(x => x.IsPublished == published);
             var items = await query.OrderByDescending(x => x.IsPinned).ThenByDescending(x => x.CreatedAtUtc)
-                .Take(take).ToListAsync();
+                .Take(limit).ToListAsync();
             return Results.Ok(new { items = items.Select(View) });
         }).RequireAuthorization().RequireRateLimiting("api");
 
@@ -237,12 +237,12 @@ public static class TeachingCommunicationEndpoints
 
         // ------------------------------ student ------------------------------
         app.MapGet("/api/teaching/my/announcements", async (
-            int take, ClaimsPrincipal p, AppDbContext db) =>
+            int? take, ClaimsPrincipal p, AppDbContext db) =>
         {
             var userId = TeachingAccess.UserId(p);
             if (userId is null || TeachingAccess.Role(p) != "Student")
                 return TeachingAccess.Deny("هذا الإجراء للطلاب فقط.");
-            take = Math.Clamp(take == 0 ? 50 : take, 1, 100);
+            var limit = Math.Clamp(take is null or 0 ? 50 : take.Value, 1, 100);
             var teacherIds = await db.TeacherStudentRequests.AsNoTracking()
                 .Where(x => x.StudentId == userId && x.Status == "Accepted" && x.UnlinkedAtUtc == null)
                 .Select(x => x.TeacherId).Distinct().ToListAsync();
@@ -260,7 +260,7 @@ public static class TeachingCommunicationEndpoints
                 .Where(x => x.TeacherId == null || teacherIds.Contains(x.TeacherId.Value))
                 .OrderByDescending(x => x.IsPinned).ThenByDescending(x => x.CreatedAtUtc)
                 .Take(200).ToListAsync();
-            var visible = candidates.Where(x => IsVisibleToStudent(x, userId.Value, groupIds, courseIds)).Take(take).ToList();
+            var visible = candidates.Where(x => IsVisibleToStudent(x, userId.Value, groupIds, courseIds)).Take(limit).ToList();
             return Results.Ok(new { items = visible.Select(View) });
         }).RequireAuthorization().RequireRateLimiting("api");
     }
