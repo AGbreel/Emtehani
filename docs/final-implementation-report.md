@@ -369,3 +369,39 @@ SaaS متعددة المدرسين، مع الحفاظ على نظام الام�
 ### تنظيف بيئة الاختبار
 - أوقف تشغيل API/Vite، حُذفت قاعدة `EmtehaniLocalTest` وملفات seed المؤقتة،
   ولم تُلمس أي بيانات إنتاج أو shared.
+
+---
+
+## 13. نشر إصلاحات المخطط والواجهة على الإنتاج (2026-11-06)
+
+### Backend — MonsterASP
+- نُشرت نسخة الواجهة الخلفية الحاوية لإصلاحات `AppDbContext` (مسار الحذف المتعدد
+  والعلاقات الصريحة بدل المفاتيح الظلّية) عبر MSDeploy مع `DoNotDeleteRule`
+  و`AppOffline` و**تخطي `appsettings*.json`**.
+- بعد النشر: `/health` = 200، `/api/teaching/overview` = 401 بدون توثيق (سلوك صحيح)،
+  ورأس CORS يُرجع `https://emtehani-opal.vercel.app`.
+
+### Frontend — Vercel
+- الكوميت `2cc3237` (إصلاحات المخطط + عدّاد أعضاء المجموعة + تطبيع إحصائيات الحضور)
+  مدفوع إلى `main`، ونُشر تلقائيًا: النشر `GTewuA7L4` بحالة **Ready / Production / Current**
+  على `emtehani-opal.vercel.app`.
+- **التحقق من المحتوى المنشور فعليًا** (وليس من أسماء الملفات): الحزمة التي يقدّمها
+  الدومين الحي تحتوي الإصلاحين:
+  - `StudentLearningPage` المنشورة تحتوي `totals:{Present:a.present||0,Late:a.late||0,
+    Absent:a.absent||0,Excused:a.excused||0}`.
+  - `TeachingGroupsPage` المنشورة تحتوي
+    `(…members||[]).filter(e=>e.status==="Active").length`.
+  - تحميل الموقع الحي كمدير: لا رسائل Console، والصفحات تُحمّل من نفس حزمة الدخول
+    `index-CMt91XC7.js` التي تشير إلى الحزمتين أعلاه.
+
+### ملاحظة تحقق تقنية
+- أسماء حزم البناء المحلية (`StudentLearningPage-CLKVp0ih.js`) تختلف عن أسماء إنتاج
+  Vercel (`StudentLearningPage-B86bMYuF.js`) لنفس الكود، لأن تثبيت الحزم على Vercel من
+  `package-lock.json` ينتج بصمة مختلفة عن بيئة التطوير المحلية. لذلك **التحقق الصحيح
+  يكون بمحتوى الملف المنشور، لا باسمه**؛ أسماء الملفات ليست دليلًا على قِدَم النشر.
+
+### تحذير أسرار الإنتاج (لم يُنفّذ تدوير بعد)
+- ملفات `backend/Emtehani.API/appsettings.json` و`appsettings.Production.json` ما زالت
+  متتبَّعة في Git وقد تحتوي أسرار إنتاج حقيقية. المطلوب: تدوير الأسرار، نقلها إلى متغيرات
+  بيئة على الاستضافة، ثم `git rm --cached` وإضافة النمط إلى `.gitignore` — دون طباعة أي قيمة.
+- يُمنع تشغيل MSDeploy بدون قاعدة تخطي `appsettings*.json`، وإلا فشل التشغيل (HTTP 500).
