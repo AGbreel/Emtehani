@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { Avatar, cn, IconButton, Logo, StatusChip } from './ui';
 import AnimatedBackground from './AnimatedBackground';
+import NotificationCenter from './NotificationCenter';
 import SessionCountdown from './SessionCountdown';
 const teacherNav = [
   { key: 'dashboard', label: 'مركز التحكم', shortLabel: 'المركز', icon: LayoutDashboard },
@@ -229,6 +230,7 @@ export default function AppShell({ user, page, activePage, title, subtitle, chil
 
       <div className="lg:mr-[280px]">
         <header className="sticky top-0 z-30 border-b border-line bg-[color-mix(in_srgb,var(--app-bg)_88%,transparent)] backdrop-blur-xl">
+          <span aria-hidden="true" className="ui-header-sheen" />
           <div className="mx-auto flex h-[68px] max-w-[1400px] items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
             <div className="flex min-w-0 items-center gap-2.5">
               <IconButton label="فتح القائمة" onClick={() => setMobileOpen(true)} className="lg:hidden"><Menu size={18} /></IconButton>
@@ -240,6 +242,7 @@ export default function AppShell({ user, page, activePage, title, subtitle, chil
             <div className="flex items-center gap-2">
               <div className="md:hidden"><SessionCountdown compact /></div>
               <div className="hidden md:block"><SessionCountdown /></div>
+              <NotificationCenter token={token} onNavigate={onNavigate} />
               <IconButton label={theme === 'dark' ? 'الوضع الفاتح' : 'الوضع الداكن'} onClick={onToggleTheme} className="hidden sm:grid">
                 {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
               </IconButton>

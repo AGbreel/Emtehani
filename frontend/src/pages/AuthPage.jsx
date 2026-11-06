@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { motion } from 'motion/react';
+import { motion, useReducedMotion } from 'motion/react';
 import {
   ArrowRight,
   BookOpen,
@@ -137,6 +137,7 @@ function AuthVisual() {
 }
 
 export default function AuthPage({ initialMode = 'login', onAuth, onBack, onOpenPortfolio, theme, onToggleTheme, notice, clearNotice, noticeTone = 'success' }) {
+  const reduce = useReducedMotion();
   const [mode, setMode] = useState(initialMode);
   const [role, setRole] = useState('Student');
   const [showPassword, setShowPassword] = useState(false);
@@ -397,44 +398,65 @@ export default function AuthPage({ initialMode = 'login', onAuth, onBack, onOpen
     const items = [];
     const emailOk = emailIsValid(form.email);
     const passwordOk = passwordIsValid(form.password);
+    // Partial progress per field so the bar reacts to every keystroke, not only when a field is valid.
+    const typed = (value, target) => {
+      const length = String(value ?? '').trim().length;
+      if (!length) return 0;
+      return Math.min(0.95, length / Math.max(1, target));
+    };
+    const add = (key, label, done, value = '', target = 1) => {
+      items.push({ key, label, done, progress: done ? 1 : typed(value, target) });
+    };
 
     if (mode === 'login') {
-      items.push({ key: 'email', label: 'بريد إلكتروني صحيح', done: emailOk });
-      items.push({ key: 'password', label: 'كلمة المرور (10+)', done: passwordOk });
+      add('email', 'بريد إلكتروني صحيح', emailOk, form.email, 18);
+      add('password', 'كلمة المرور (10+)', passwordOk, form.password, 10);
     } else if (mode === 'register') {
       if (role === 'Teacher') {
-        items.push({ key: 'name', label: 'الاسم الكامل', done: normalizeDisplayName(form.fullName).length >= 3 });
+        const teacherName = normalizeDisplayName(form.fullName);
+        add('name', 'الاسم الكامل', teacherName.length >= 3, teacherName, 12);
       } else {
         const studentPhone = phoneDigits(form.studentPhone);
         const parentPhone = phoneDigits(form.parentPhone);
         const count = Number(form.teacherCount);
         const countOk = Number.isInteger(count) && count >= 1 && count <= 20;
-        items.push({ key: 'name', label: 'الاسم رباعياً', done: !studentFullNameError(form.fullName) });
-        items.push({ key: 'education', label: 'المرحلة والصف', done: isValidEducation(form.stage, form.grade) });
-        items.push({ key: 'student-phone', label: 'هاتف الطالب', done: isValidPhone(studentPhone) });
-        items.push({ key: 'parent-phone', label: 'هاتف ولي الأمر', done: isValidPhone(parentPhone) && parentPhone !== studentPhone });
-        items.push({ key: 'parent-name', label: 'اسم ولي الأمر', done: !parentNameError(form.parentName, { required: true }) });
-        items.push({ key: 'teacher-count', label: 'عدد المدرسين', done: countOk });
-        items.push({ key: 'teachers', label: 'اختيار مدرس', done: form.teacherIds.length >= 1 && form.teacherIds.length <= teacherLimit });
+        add('name', 'الاسم رباعياً', !studentFullNameError(form.fullName), normalizeDisplayName(form.fullName), 16);
+        add('education', 'المرحلة والصف', isValidEducation(form.stage, form.grade));
+        add('student-phone', 'هاتف الطالب', isValidPhone(studentPhone), studentPhone, 11);
+        add('parent-phone', 'هاتف ولي الأمر', isValidPhone(parentPhone) && parentPhone !== studentPhone, parentPhone, 11);
+        add('parent-name', 'اسم ولي الأمر', !parentNameError(form.parentName, { required: true }), normalizeDisplayName(form.parentName), 14);
+        add('teacher-count', 'عدد المدرسين', countOk);
+        items.push({
+          key: 'teachers',
+          label: 'اختيار مدرس',
+          done: form.teacherIds.length >= 1 && form.teacherIds.length <= teacherLimit,
+          progress: Math.min(0.92, form.teacherIds.length / Math.max(1, teacherLimit)),
+        });
       }
-      items.push({ key: 'email', label: 'البريد الإلكتروني', done: emailOk });
-      items.push({ key: 'password', label: 'كلمة مرور قوية (10+)', done: passwordOk });
-      items.push({ key: 'terms', label: 'الموافقة على الشروط', done: accepted });
+      add('email', 'البريد الإلكتروني', emailOk, form.email, 18);
+      add('password', 'كلمة مرور قوية (10+)', passwordOk, form.password, 10);
+      add('terms', 'الموافقة على الشروط', accepted);
     } else if (mode === 'forgot') {
-      items.push({ key: 'email', label: 'بريد إلكتروني صحيح', done: emailOk });
+      add('email', 'بريد إلكتروني صحيح', emailOk, form.email, 18);
     } else {
-      items.push({ key: 'token', label: 'رابط إعادة التعيين', done: Boolean(resetToken) });
-      items.push({ key: 'new-password', label: 'كلمة مرور جديدة (10+)', done: passwordIsValid(newPassword) });
-      items.push({ key: 'confirm', label: 'تطابق كلمتي المرور', done: confirmPassword.length > 0 && newPassword === confirmPassword });
+      add('token', 'رابط إعادة التعيين', Boolean(resetToken));
+      add('new-password', 'كلمة مرور جديدة (10+)', passwordIsValid(newPassword), newPassword, 10);
+      items.push({
+        key: 'confirm',
+        label: 'تطابق كلمتي المرور',
+        done: confirmPassword.length > 0 && newPassword === confirmPassword,
+        progress: confirmPassword.length === 0 ? 0 : Math.min(0.95, confirmPassword.length / Math.max(10, newPassword.length)),
+      });
     }
 
     const done = items.filter((item) => item.done).length;
     const total = Math.max(1, items.length);
+    const progress = items.reduce((sum, item) => sum + Math.min(1, Math.max(0, item.progress || 0)), 0);
     return {
       items,
       done,
       total,
-      percent: Math.round((done / total) * 100),
+      percent: Math.round((progress / total) * 100),
       complete: done === items.length && items.length > 0,
     };
   }, [mode, role, form, accepted, newPassword, confirmPassword, resetToken, teacherLimit]);
@@ -457,15 +479,25 @@ export default function AuthPage({ initialMode = 'login', onAuth, onBack, onOpen
           <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="w-full max-w-[430px]">
             <button type="button" onClick={onBack} className="mb-6 inline-flex min-h-10 items-center gap-1.5 text-[11.5px] font-bold text-muted transition hover:text-primary"><ArrowRight size={14} />العودة للرئيسية</button>
 
-            <div className="mb-6">
-              <div className="mb-3 inline-flex size-11 items-center justify-center rounded-[14px] bg-primary-soft text-primary"><LockKeyhole size={21} /></div>
+            <motion.div key={`intro-${mode}`} initial={reduce ? false : { opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.38, ease: [0.16, 1, 0.3, 1] }} className="mb-6">
+              <motion.div
+                initial={reduce ? false : { opacity: 0, scale: 0.6, rotate: -16 }}
+                animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                transition={{ type: 'spring', stiffness: 260, damping: 18 }}
+                className="relative mb-3 inline-grid size-11 place-items-center rounded-[14px] bg-primary-soft text-primary"
+              >
+                <span aria-hidden="true" className="pointer-events-none absolute inset-0 rounded-[14px] border border-primary/35 motion-safe:animate-[ui-pulse-ring_3.4s_ease-out_infinite]" />
+                <motion.span animate={reduce ? undefined : { y: [0, -2.5, 0] }} transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }} className="grid place-items-center">
+                  <LockKeyhole size={21} />
+                </motion.span>
+              </motion.div>
               <h1 className="font-display text-[clamp(1.7rem,3vw,2.15rem)] font-semibold leading-tight tracking-[-0.045em] text-ink">
                 {mode === 'login' ? 'أهلاً بعودتك.' : mode === 'register' ? 'أنشئ حسابك في دقيقة.' : mode === 'forgot' ? 'استعادة كلمة المرور.' : 'تعيين كلمة مرور جديدة.'}
               </h1>
               <p className="mt-1.5 text-[13.5px] leading-6 text-muted">
                 {mode === 'login' ? 'سجّل الدخول لمتابعة امتحاناتك أو إدارة جلستك القادمة.' : mode === 'register' ? 'اختر نوع الحساب، وأدخل بياناتك، وستكون جاهزاً للبدء.' : mode === 'forgot' ? 'أدخل بريدك الإلكتروني وسنرسل لك رابط إعادة التعيين إذا كان الحساب موجوداً.' : 'اختر كلمة مرور جديدة لحسابك.'}
               </p>
-            </div>
+            </motion.div>
 
             {mode === 'login' || mode === 'register' ? (
               <Segmented
@@ -482,27 +514,71 @@ export default function AuthPage({ initialMode = 'login', onAuth, onBack, onOpen
             {activeNotice ? <Alert tone={notice ? noticeTone : 'success'} className="mb-4" onClose={() => { clearNotice?.(); setLocalNotice(''); }}>{activeNotice}</Alert> : null}
             {error ? <Alert tone="danger" className="mb-4" onClose={() => setError('')}>{error}</Alert> : null}
 
-            <div className={`mb-4 rounded-[16px] border p-3.5 transition-colors duration-300 ${readiness.complete ? 'border-emerald/30 bg-emerald-soft/60' : 'border-line bg-surface/80'} backdrop-blur-sm`} data-testid="auth-readiness">
-              <div className="mb-2 flex items-center justify-between gap-2">
+            <motion.div
+              className={`relative mb-4 overflow-hidden rounded-[16px] border p-3.5 transition-colors duration-300 ${readiness.complete ? 'border-emerald/30 bg-emerald-soft/60' : 'border-line bg-surface/80'} backdrop-blur-sm`}
+              animate={reduce ? undefined : { scale: readiness.complete ? 1.012 : 1 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 24 }}
+              data-testid="auth-readiness"
+            >
+              <motion.span
+                aria-hidden="true"
+                className={`pointer-events-none absolute -left-10 -top-12 size-28 rounded-full blur-2xl ${readiness.complete ? 'bg-emerald/20' : 'bg-primary/10'}`}
+                animate={reduce ? undefined : { scale: [1, 1.22, 1], opacity: [0.5, 0.9, 0.5] }}
+                transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+              />
+              <div className="relative mb-2 flex items-center justify-between gap-2">
                 <span className={`flex items-center gap-1.5 text-[11.5px] font-bold ${readiness.complete ? 'text-emerald' : 'text-muted'}`}>
                   {readiness.complete ? <CheckCircle2 size={13} /> : <ShieldCheck size={13} />}
                   {readiness.complete ? (mode === 'login' ? 'جاهز للدخول' : mode === 'register' ? 'جاهز لإنشاء الحساب' : mode === 'forgot' ? 'جاهز للإرسال' : 'جاهز للتعيين') : `جاهزية النموذج · ${readiness.done} من ${readiness.total}`}
                 </span>
-                <span className={`ui-number text-[11px] font-bold ${readiness.complete ? 'text-emerald' : 'text-subtle'}`}>{readiness.percent}%</span>
+                <motion.span
+                  key={readiness.percent}
+                  initial={reduce ? false : { opacity: 0.35, y: -3, scale: 0.92 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                  className={`ui-number text-[11px] font-bold ${readiness.complete ? 'text-emerald' : 'text-subtle'}`}
+                >
+                  {readiness.percent}%
+                </motion.span>
               </div>
-              <ProgressBar value={readiness.percent} className="h-1.5" tone={readiness.complete ? 'emerald' : 'primary'} />
-              <div className="mt-2.5 flex flex-wrap gap-1.5">
+              <div className="relative mt-0.5 overflow-hidden rounded-full">
+                <ProgressBar value={readiness.percent} className="h-1.5" tone={readiness.complete ? 'emerald' : 'primary'} />
+                {!readiness.complete && readiness.percent > 0 ? (
+                  <motion.span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-y-0 w-1/3 bg-gradient-to-l from-transparent via-white/70 to-transparent"
+                    animate={reduce ? undefined : { x: ['140%', '-360%'] }}
+                    transition={{ duration: 2.2, repeat: Infinity, ease: 'linear' }}
+                  />
+                ) : null}
+              </div>
+              <div className="relative mt-2.5 flex flex-wrap gap-1.5">
                 {readiness.items.map((item) => (
-                  <span
+                  <motion.span
                     key={item.key}
+                    layout={!reduce}
+                    animate={reduce ? undefined : { scale: item.done ? 1.03 : 1 }}
+                    transition={{ type: 'spring', stiffness: 420, damping: 26 }}
                     className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9.5px] font-bold transition-colors duration-300 ${item.done ? 'bg-emerald-soft text-emerald' : 'bg-surface-soft text-subtle'}`}
                   >
-                    {item.done ? <CheckCircle2 size={9} /> : <span className="size-1.5 rounded-full bg-current opacity-50" />}
+                    {item.done ? (
+                      <CheckCircle2 size={9} />
+                    ) : item.progress > 0 ? (
+                      <span className="relative h-1 w-3.5 overflow-hidden rounded-full bg-current opacity-25">
+                        <motion.span
+                          className="absolute inset-y-0 right-0 rounded-full bg-current opacity-80"
+                          animate={{ width: `${Math.round(item.progress * 100)}%` }}
+                          transition={{ duration: 0.22, ease: 'easeOut' }}
+                        />
+                      </span>
+                    ) : (
+                      <span className="size-1.5 rounded-full bg-current opacity-50" />
+                    )}
                     {item.label}
-                  </span>
+                  </motion.span>
                 ))}
               </div>
-            </div>
+            </motion.div>
 
             <motion.form
               key={`${mode}-${mode === 'register' ? role : ''}`}

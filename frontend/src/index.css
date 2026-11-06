@@ -310,6 +310,45 @@
       radial-gradient(48% 42% at 6% 96%, color-mix(in srgb, var(--app-emerald) 10%, transparent), transparent 72%);
   }
 
+  .ui-aurora {
+    position: absolute;
+    inset: -40%;
+    background: conic-gradient(from 90deg at 50% 50%,
+      transparent 0deg,
+      color-mix(in srgb, var(--app-primary) 9%, transparent) 70deg,
+      transparent 150deg,
+      color-mix(in srgb, var(--app-emerald) 7%, transparent) 230deg,
+      transparent 320deg);
+    animation: ui-aurora-drift 48s linear infinite;
+    opacity: .85;
+    will-change: transform;
+  }
+
+  .ui-star {
+    position: absolute;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--app-primary) 70%, transparent);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--app-primary) 55%, transparent);
+    animation: ui-twinkle 4.5s ease-in-out infinite;
+    will-change: transform, opacity;
+  }
+
+  .ui-header-sheen {
+    position: absolute;
+    inset-inline: 0;
+    bottom: -1px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--app-primary), var(--app-emerald), transparent);
+    background-size: 220% 100%;
+    animation: ui-header-flow 7s linear infinite;
+    opacity: .55;
+  }
+
+  .ui-live-dot {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--app-emerald) 45%, transparent);
+    animation: ui-live-pulse 2.4s ease-out infinite;
+  }
+
   .ui-card-lift {
     transition: transform .35s cubic-bezier(.16,1,.3,1), box-shadow .35s ease, border-color .35s ease;
   }
@@ -457,6 +496,25 @@
 @keyframes ui-float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-8px); }
+}
+
+@keyframes ui-aurora-drift {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ui-twinkle {
+  0%, 100% { opacity: .12; transform: scale(.7); }
+  50% { opacity: .85; transform: scale(1.3); }
+}
+
+@keyframes ui-header-flow {
+  to { background-position: -220% 0; }
+}
+
+@keyframes ui-live-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--app-emerald) 42%, transparent); }
+  70% { box-shadow: 0 0 0 7px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
 }
 
 @media (prefers-reduced-motion: reduce) {

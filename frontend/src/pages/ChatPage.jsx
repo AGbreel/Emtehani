@@ -4,6 +4,7 @@ import {
   ArrowRight,
   Check,
   CheckCheck,
+  GraduationCap,
   ImagePlus,
   LoaderCircle,
   MessageCircle,
@@ -54,6 +55,7 @@ function inboxTime(value) {
 }
 
 function typeMeta(type) {
+  if (type === 'AdminGroup') return { label: 'مجموعة المدرسين', icon: GraduationCap, tone: 'emerald' };
   if (type === 'TeacherGroup') return { label: 'شات جماعي', icon: Users, tone: 'primary' };
   if (type === 'AdminDirect') return { label: 'الإدارة', icon: ShieldCheck, tone: 'emerald' };
   return { label: 'محادثة مباشرة', icon: MessageCircle, tone: 'blue' };
@@ -202,12 +204,27 @@ export default function ChatPage({ token, user }) {
 
   useEffect(() => {
     let target = '';
+    let conversationId = '';
     try {
       target = sessionStorage.getItem('emtehani-chat-target') || '';
+      conversationId = sessionStorage.getItem('emtehani-chat-conversation') || '';
       if (target) sessionStorage.removeItem('emtehani-chat-target');
+      if (conversationId) sessionStorage.removeItem('emtehani-chat-conversation');
     } catch { /* ignore */ }
     if (target) startDirect(target);
-  }, [startDirect]);
+    else if (conversationId) openConversation(conversationId);
+  }, [startDirect, openConversation]);
+
+  useEffect(() => {
+    const onOpen = (event) => {
+      const conversationId = event?.detail?.conversationId;
+      if (!conversationId) return;
+      stickToBottomRef.current = true;
+      openConversation(conversationId);
+    };
+    window.addEventListener('emtehani:open-conversation', onOpen);
+    return () => window.removeEventListener('emtehani:open-conversation', onOpen);
+  }, [openConversation]);
 
   const openContacts = async () => {
     setContactsOpen(true);
@@ -385,9 +402,10 @@ export default function ChatPage({ token, user }) {
                     >
                       <span className={cn(
                         'grid size-10 shrink-0 place-items-center rounded-[13px] border',
-                        conversation.type === 'TeacherGroup' ? 'border-primary/15 bg-primary-soft text-primary'
-                          : conversation.type === 'AdminDirect' ? 'border-emerald/20 bg-emerald-soft text-emerald'
-                            : 'border-blue/20 bg-blue-soft text-blue',
+                        conversation.type === 'AdminGroup' ? 'border-emerald/25 bg-emerald text-white shadow-sm'
+                          : conversation.type === 'TeacherGroup' ? 'border-primary/15 bg-primary-soft text-primary'
+                            : conversation.type === 'AdminDirect' ? 'border-emerald/20 bg-emerald-soft text-emerald'
+                              : 'border-blue/20 bg-blue-soft text-blue',
                       )}>
                         <Icon size={18} />
                       </span>
@@ -439,9 +457,10 @@ export default function ChatPage({ token, user }) {
                     <IconButton label="رجوع إلى المحادثات" onClick={() => setMobileThread(false)} className="lg:hidden"><ArrowRight size={17} /></IconButton>
                     <span className={cn(
                       'grid size-11 shrink-0 place-items-center rounded-[14px] border shadow-sm',
-                      activeConversation.type === 'TeacherGroup' ? 'border-primary/15 bg-primary text-white'
-                        : activeConversation.type === 'AdminDirect' ? 'border-emerald/20 bg-emerald-soft text-emerald'
-                          : 'border-blue/20 bg-blue-soft text-blue',
+                      activeConversation.type === 'AdminGroup' ? 'border-emerald/25 bg-emerald text-white'
+                        : activeConversation.type === 'TeacherGroup' ? 'border-primary/15 bg-primary text-white'
+                          : activeConversation.type === 'AdminDirect' ? 'border-emerald/20 bg-emerald-soft text-emerald'
+                            : 'border-blue/20 bg-blue-soft text-blue',
                     )}>
                       <ActiveIcon size={20} />
                     </span>
