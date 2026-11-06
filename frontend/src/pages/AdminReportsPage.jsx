@@ -103,7 +103,7 @@ export default function AdminReportsPage({ token }) {
         <Field label="من"><Input type="date" value={range.from} onChange={(e) => setRange((p) => ({ ...p, from: e.target.value }))} /></Field>
         <Field label="إلى"><Input type="date" value={range.to} onChange={(e) => setRange((p) => ({ ...p, to: e.target.value }))} /></Field>
         <Button variant="soft" onClick={loadOverview} loading={loading}>تطبيق</Button>
-        <div className="ms-auto flex flex-wrap gap-2">
+        <div className="flex w-full flex-wrap gap-2 sm:ms-auto sm:w-auto">
           <Button variant="soft" icon={FileSpreadsheet} loading={busy === 'subscriptions'} onClick={() => exportCsv('subscriptions')}>اشتراكات CSV</Button>
           <Button variant="soft" icon={Download} loading={busy === 'platform-payments'} onClick={() => exportCsv('platform-payments')}>مدفوعات CSV</Button>
         </div>

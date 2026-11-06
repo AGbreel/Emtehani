@@ -212,7 +212,7 @@ export default function TeachingReportsPage({ token }) {
             <Field label="من"><Input type="date" value={financeRange.from} onChange={(e) => setFinanceRange((p) => ({ ...p, from: e.target.value }))} /></Field>
             <Field label="إلى"><Input type="date" value={financeRange.to} onChange={(e) => setFinanceRange((p) => ({ ...p, to: e.target.value }))} /></Field>
             <Button variant="soft" onClick={loadFinance}>عرض</Button>
-            <div className="ms-auto flex flex-wrap gap-2">
+            <div className="flex w-full flex-wrap gap-2 sm:ms-auto sm:w-auto">
               <Button variant="soft" icon={FileSpreadsheet} loading={busy === 'charges.csv'}
                 onClick={() => exportFile(`/api/teaching/finance/charges.csv?from=${financeRange.from}&to=${financeRange.to}`, 'charges.csv')}>المستحقات CSV</Button>
               <Button variant="soft" icon={FileSpreadsheet} loading={busy === 'payments.csv'}
