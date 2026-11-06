@@ -2796,6 +2796,10 @@ app.MapPost("/api/uploads/image", async (HttpRequest req, ClaimsPrincipal p) =>
     var role = p.FindFirstValue(ClaimTypes.Role);
     if (role is not ("Teacher" or "Student" or "Admin")) return Results.Forbid();
     if (!req.HasFormContentType) return Results.BadRequest(new { message = "أرسل الصورة كملف من الجهاز." });
+    // The global multipart ceiling is raised for video uploads; stop oversized
+    // image bodies before they are buffered.
+    if (req.ContentLength is long declaredLength && declaredLength > 5 * 1024 * 1024)
+        return Results.Json(new { message = "حجم الصورة يجب ألا يتجاوز 4 ميجابايت." }, statusCode: StatusCodes.Status413PayloadTooLarge);
     var form = await req.ReadFormAsync();
     var file = form.Files.GetFile("file") ?? form.Files.FirstOrDefault();
     if (file is null || file.Length == 0) return Results.BadRequest(new { message = "اختر صورة أولاً." });
@@ -2882,7 +2886,7 @@ app.MapPost("/api/uploads/media", async (HttpRequest req, ClaimsPrincipal p, App
     {
         form = await req.ReadFormAsync();
     }
-    catch (BadHttpRequestException)
+    catch (Exception ex) when (ex is BadHttpRequestException or InvalidDataException)
     {
         return Results.Json(
             new { message = $"حجم الملف أكبر من الحد المسموح ({maxBytes / (1024 * 1024)} ميجابايت)." },
