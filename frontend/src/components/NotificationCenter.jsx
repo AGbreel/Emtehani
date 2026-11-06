@@ -60,6 +60,7 @@ export default function NotificationCenter({ token, onNavigate }) {
     try { return localStorage.getItem(SOUND_KEY) !== 'off'; } catch { return true; }
   });
   const panelRef = useRef(null);
+  const buttonRef = useRef(null);
   const newestRef = useRef(0);
   const initialisedRef = useRef(false);
   const soundRef = useRef(soundOn);
@@ -119,7 +120,7 @@ export default function NotificationCenter({ token, onNavigate }) {
     if (!open) return undefined;
     load({ silent: false });
     const onPointerDown = (event) => {
-      if (panelRef.current && !panelRef.current.contains(event.target)) setOpen(false);
+      if (panelRef.current && !panelRef.current.contains(event.target) && !buttonRef.current?.contains(event.target)) setOpen(false);
     };
     const onKeyDown = (event) => {
       if (event.key === 'Escape') setOpen(false);
@@ -192,6 +193,7 @@ export default function NotificationCenter({ token, onNavigate }) {
   return (
     <div className="relative">
       <motion.button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((value) => !value)}
         aria-label={unread > 0 ? `الإشعارات، ${unread} غير مقروء` : 'الإشعارات'}
