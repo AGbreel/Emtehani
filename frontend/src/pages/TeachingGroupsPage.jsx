@@ -195,7 +195,7 @@ export default function TeachingGroupsPage({ token, onOpenChat }) {
     } catch (err) { setError(err.message); }
   }, [token, activeId]);
 
-  const activeCount = useMemo(() => (detail?.Members || []).filter((m) => m.status === 'Active').length, [detail]);
+  const activeCount = useMemo(() => (detail?.members || []).filter((m) => m.status === 'Active').length, [detail]);
 
   async function addMember(studentId) {
     setBusy('member');

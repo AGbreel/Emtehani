@@ -61,7 +61,14 @@ export default function StudentLearningPage({ token, onOpenChat }) {
       ]);
       setGroups(groupData?.items || []);
       setSessions(sessionData?.items || []);
-      setAttendance({ totals: attendanceData?.totals || {}, items: attendanceData?.items || [] });
+      const rawTotals = attendanceData?.totals || {};
+      setAttendance({
+        totals: {
+          Present: rawTotals.present || 0, Late: rawTotals.late || 0,
+          Absent: rawTotals.absent || 0, Excused: rawTotals.excused || 0,
+        },
+        items: attendanceData?.items || [],
+      });
       setHomework(homeworkData?.items || []);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   }, [token]);

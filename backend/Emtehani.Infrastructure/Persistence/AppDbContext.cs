@@ -205,7 +205,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options):DbConte
   b.Entity<ChatAuditLog>().HasIndex(x=>new{x.ConversationId,x.CreatedAtUtc});
   // ---- teaching module ----
   b.Entity<TeachingAssistant>().HasOne(x=>x.Teacher).WithMany().HasForeignKey(x=>x.TeacherId).OnDelete(DeleteBehavior.Cascade);
-  b.Entity<TeachingAssistant>().HasOne(x=>x.Assistant).WithMany().HasForeignKey(x=>x.AssistantId).OnDelete(DeleteBehavior.Cascade);
+  // SQL Server rejects two cascading FKs from TeachingAssistants to Users (multiple cascade paths);
+  // TeachingSchema.cs creates AssistantId with ON DELETE NO ACTION, so the model must match.
+  b.Entity<TeachingAssistant>().HasOne(x=>x.Assistant).WithMany().HasForeignKey(x=>x.AssistantId).OnDelete(DeleteBehavior.NoAction);
   b.Entity<TeachingAssistant>().HasIndex(x=>new{x.TeacherId,x.AssistantId}).IsUnique();
   b.Entity<TeachingAssistant>().HasIndex(x=>x.AssistantId);
   b.Entity<TeachingAssistant>().Property(x=>x.Status).HasMaxLength(24);
@@ -213,6 +215,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options):DbConte
   b.Entity<AssistantPermission>().Property(x=>x.Permission).HasMaxLength(64);
   b.Entity<AssistantGroupAccess>().HasIndex(x=>new{x.AssistantId,x.GroupId}).IsUnique();
   b.Entity<TeacherCourse>().HasOne(x=>x.Teacher).WithMany().HasForeignKey(x=>x.TeacherId).OnDelete(DeleteBehavior.Cascade);
+  // Navigation names don't match the FK prefix (Enrollments/CourseId, Groups/CourseId, ...),
+  // so EF falls back to shadow FKs unless each relationship is mapped explicitly.
+  b.Entity<TeacherCourse>().HasMany(x=>x.Enrollments).WithOne().HasForeignKey(x=>x.CourseId).OnDelete(DeleteBehavior.ClientCascade);
+  b.Entity<TeacherCourse>().HasMany(x=>x.Groups).WithOne().HasForeignKey(x=>x.CourseId).OnDelete(DeleteBehavior.ClientCascade);
   b.Entity<TeacherCourse>().HasIndex(x=>new{x.TeacherId,x.IsArchived});
   b.Entity<TeacherCourse>().Property(x=>x.Title).HasMaxLength(200);
   b.Entity<TeacherCourse>().Property(x=>x.DeliveryMode).HasMaxLength(24);
@@ -235,6 +241,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options):DbConte
   b.Entity<LessonProgress>().HasIndex(x=>new{x.LessonId,x.StudentId}).IsUnique();
   b.Entity<LessonProgress>().HasIndex(x=>new{x.TeacherId,x.StudentId});
   b.Entity<TeachingGroup>().HasOne(x=>x.Teacher).WithMany().HasForeignKey(x=>x.TeacherId).OnDelete(DeleteBehavior.Cascade);
+  b.Entity<TeachingGroup>().HasMany(x=>x.Memberships).WithOne().HasForeignKey(x=>x.GroupId).OnDelete(DeleteBehavior.ClientCascade);
+  b.Entity<TeachingGroup>().HasMany(x=>x.Schedules).WithOne().HasForeignKey(x=>x.GroupId).OnDelete(DeleteBehavior.Cascade);
+  b.Entity<TeachingGroup>().HasMany(x=>x.Sessions).WithOne().HasForeignKey(x=>x.GroupId).OnDelete(DeleteBehavior.Cascade);
+  b.Entity<TeachingGroup>().HasMany(x=>x.Courses).WithOne().HasForeignKey(x=>x.GroupId).OnDelete(DeleteBehavior.ClientCascade);
   b.Entity<TeachingGroup>().HasIndex(x=>new{x.TeacherId,x.IsActive});
   b.Entity<TeachingGroup>().Property(x=>x.Name).HasMaxLength(160);
   b.Entity<TeachingGroup>().Property(x=>x.DeliveryMode).HasMaxLength(24);
@@ -246,6 +256,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options):DbConte
   b.Entity<GroupMembership>().HasIndex(x=>new{x.GroupId,x.StudentId}).IsUnique();
   b.Entity<GroupMembership>().HasIndex(x=>new{x.TeacherId,x.StudentId});
   b.Entity<GroupSchedule>().HasIndex(x=>x.GroupId);
+  b.Entity<GroupSession>().HasMany(x=>x.Attendances).WithOne().HasForeignKey(x=>x.SessionId).OnDelete(DeleteBehavior.Cascade);
   b.Entity<GroupSession>().HasIndex(x=>new{x.GroupId,x.StartsAtUtc});
   b.Entity<GroupSession>().HasIndex(x=>new{x.TeacherId,x.StartsAtUtc});
   b.Entity<GroupSession>().Property(x=>x.Status).HasMaxLength(24);
@@ -256,11 +267,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options):DbConte
   b.Entity<AttendanceAuditLog>().HasIndex(x=>x.SessionId);
   b.Entity<AttendanceQrToken>().HasIndex(x=>x.TokenHash).IsUnique();
   b.Entity<AttendanceQrToken>().HasIndex(x=>x.ExpiresAtUtc);
+  b.Entity<HomeworkAssignment>().HasMany(x=>x.Submissions).WithOne().HasForeignKey(x=>x.AssignmentId).OnDelete(DeleteBehavior.Cascade);
   b.Entity<HomeworkAssignment>().HasIndex(x=>new{x.TeacherId,x.DueAtUtc});
   b.Entity<HomeworkAssignment>().HasIndex(x=>x.GroupId);
   b.Entity<HomeworkSubmission>().HasOne(x=>x.Student).WithMany().HasForeignKey(x=>x.StudentId).OnDelete(DeleteBehavior.Cascade);
   b.Entity<HomeworkSubmission>().HasIndex(x=>new{x.AssignmentId,x.StudentId}).IsUnique();
   b.Entity<HomeworkSubmission>().HasIndex(x=>new{x.TeacherId,x.Status});
+  b.Entity<StudentPackage>().HasMany(x=>x.Items).WithOne().HasForeignKey(x=>x.PackageId).OnDelete(DeleteBehavior.Cascade);
   b.Entity<StudentPackage>().HasIndex(x=>new{x.TeacherId,x.IsActive});
   b.Entity<StudentPackage>().Property(x=>x.Price).HasPrecision(12,2);
   b.Entity<StudentPackage>().Property(x=>x.OldPrice).HasPrecision(12,2);
