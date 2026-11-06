@@ -160,7 +160,7 @@ export default function AdminReportsPage({ token }) {
             </Card>
           </div>
 
-          <Card className="p-4">
+          <Card className="overflow-hidden p-4">
             <h3 className="mb-3 flex items-center gap-2 font-display text-[15px] font-semibold text-ink"><TrendingUp size={17} /> أنشط المدرسين (بتحصيل الفترة)</h3>
             {topTeachers.length === 0 ? <p className="py-6 text-center text-[12px] text-muted">لا توجد بيانات.</p> : (
               <div className="overflow-x-auto">
