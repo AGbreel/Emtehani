@@ -40,7 +40,7 @@ import {
   cn,
 } from '../components/ui';
 import { request } from '../lib/api';
-import { formatDuration, formatNumber } from '../lib/format';
+import { formatDuration, formatNumber, cairoInputToUtcIso, toCairoInputValue } from '../lib/format';
 import { EDUCATION_STAGES, gradesForStage } from '../lib/education';
 
 const questionTypes = [
@@ -225,6 +225,7 @@ export default function ExamForm({ token, onBack, onCreated }) {
   const [scheduledAt, setScheduledAt] = useState('');
   const [availableFrom, setAvailableFrom] = useState('');
   const [availableUntil, setAvailableUntil] = useState('');
+  const [resultsReleaseMode, setResultsReleaseMode] = useState('AfterExamEnd');
   const [questions, setQuestions] = useState([createQuestion('MultipleChoice')]);
   const [typePicker, setTypePicker] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -311,9 +312,10 @@ export default function ExamForm({ token, onBack, onCreated }) {
           durationMinutes: Number(durationMinutes),
           maxAttempts: Number(maxAttempts),
           allowResumeAfterFocusLoss: allowResume,
-          scheduledAtUtc: scheduledAt ? new Date(scheduledAt).toISOString() : null,
-          availableFromUtc: availableFrom ? new Date(availableFrom).toISOString() : null,
-          availableUntilUtc: availableUntil ? new Date(availableUntil).toISOString() : null,
+          scheduledAtUtc: cairoInputToUtcIso(scheduledAt),
+          availableFromUtc: cairoInputToUtcIso(availableFrom),
+          availableUntilUtc: cairoInputToUtcIso(availableUntil),
+          resultsReleaseMode,
           stage,
           grade,
           questions: questions.map(payloadFor),
@@ -374,7 +376,7 @@ export default function ExamForm({ token, onBack, onCreated }) {
                 </Field>
               </div>
               <Field label="موعد الجلسة" id="exam-schedule" hint="اختياري. يمكنك تركه فارغاً وفتح الجلسة يدوياً في أي وقت.">
-                <Input id="exam-schedule" type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} min={new Date().toISOString().slice(0, 16)} />
+                <Input id="exam-schedule" type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} min={toCairoInputValue(new Date())} />
               </Field>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="فترة الإتاحة من" id="exam-available-from" hint="اختياري. لا يمكن للطالب بدء المحاولة قبل هذا الوقت.">
@@ -384,6 +386,12 @@ export default function ExamForm({ token, onBack, onCreated }) {
                   <Input id="exam-available-until" type="datetime-local" value={availableUntil} onChange={(event) => setAvailableUntil(event.target.value)} />
                 </Field>
               </div>
+              <Field label="موعد إظهار النتائج" id="exam-results-release" hint="الأوقات المعروضة بتوقيت مصر (Africa/Cairo). التصحيح اليدوي للمقالي يؤخر ظهور النتائج حتى يكتمل.">
+                <Select id="exam-results-release" value={resultsReleaseMode} onChange={(event) => setResultsReleaseMode(event.target.value)}>
+                  <option value="AfterSubmission">بعد انتهاء الطالب من الامتحان</option>
+                  <option value="AfterExamEnd">بعد انتهاء وقت الامتحان بالكامل</option>
+                </Select>
+              </Field>
               <Checkbox label="السماح للطالب باستكمال المحاولة إذا غادر الصفحة أو انقطع اتصاله. عند الإيقاف، يُحتسب خروج الطالب ضمن سجل المحاولة." checked={allowResume} onChange={(event) => setAllowResume(event.target.checked)} />
             </div>
           </Card>
@@ -427,6 +435,7 @@ export default function ExamForm({ token, onBack, onCreated }) {
                 ['الدرجة الكلية', `${formatNumber(totalPoints)} درجة`],
                 ['المدة', formatDuration(durationMinutes || 0)],
                 ['المحاولات', `${formatNumber(maxAttempts)} محاولة`],
+                ['إظهار النتائج', resultsReleaseMode === 'AfterSubmission' ? 'بعد تسليم الطالب' : 'بعد انتهاء الامتحان'],
               ].map(([label, value]) => (
                 <div key={label} className="flex items-start justify-between gap-2 border-b border-line pb-2 last:border-0 last:pb-0">
                   <dt className="text-[11.5px] text-muted">{label}</dt>

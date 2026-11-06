@@ -36,10 +36,10 @@ test('exam auto-submits when the timer expires', async ({ page, request }, testI
   const questionCard = page.locator('[id^="question-"]').filter({ hasText: 'سؤال انتهاء الوقت' });
   await expect(questionCard).toBeVisible({ timeout: 20_000 });
   await questionCard.locator('label').first().click();
-  await expect(page.locator('header [role="status"]')).toContainText('تم الحفظ تلقائياً', { timeout: 20_000 });
+  await expect(page.locator('[data-testid="exam-save-status"]')).toContainText('تم الحفظ تلقائياً', { timeout: 20_000 });
 
   await expect(page.getByText('نتيجتك', { exact: true })).toBeVisible({ timeout: 80_000 });
-  await expect(page.getByText('بانتظار اعتماد النتائج').first()).toBeVisible();
+  await expect(page.getByText('بانتظار موعد إظهار النتائج').first()).toBeVisible();
 
   await apiJson(request, 'PUT', `/api/exams/${exam.id}/state`, teacher.token, { action: 'close' });
 

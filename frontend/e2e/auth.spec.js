@@ -22,22 +22,21 @@ test('open teacher registration and Arabic RTL student login', async ({ page, br
   await page.locator('#auth-name').fill(teacher.name);
   await page.locator('#auth-email').fill(teacher.email);
   await page.locator('#auth-password').fill(PASSWORD);
-  await page.locator('button[aria-pressed]').filter({ hasText: 'طالب' }).click();
+  await page.locator('[data-testid="auth-role-student"]').click();
   await expect(page.locator('#auth-stage')).toBeVisible();
   await expect(page.locator('#auth-grade')).toBeVisible();
   await page.locator('#auth-stage').selectOption('ثانوي');
   await page.locator('#auth-grade').selectOption('الصف الثالث الثانوي');
-  await page.locator('button[aria-pressed]').filter({ hasText: 'مدرس' }).click();
+  await page.locator('[data-testid="auth-role-teacher"]').click();
   await expect(page.locator('#auth-stage')).toHaveCount(0);
   await expect(page.locator('#auth-invite')).toHaveCount(0);
   await page.locator('input[type="checkbox"]').check();
   await page.getByRole('button', { name: 'إنشاء الحساب', exact: true }).click();
-  await expect(page.getByText(/تم إنشاء الحساب/).first()).toBeVisible();
-
-  await page.locator('#auth-email').fill(teacher.email);
-  await page.locator('#auth-password').fill(PASSWORD);
-  await page.locator('form').getByRole('button', { name: 'تسجيل الدخول', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'مركز التحكم', exact: true }).first()).toBeVisible();
+  // Teacher registration auto-signs in and opens the Free package selection.
+  await expect(page.getByRole('heading', { name: 'الاشتراك', exact: true }).first()).toBeVisible();
+  await expect(page.getByTestId('plan-free')).toBeVisible();
+  await page.getByRole('button', { name: 'تأكيد الباقة', exact: true }).click();
+  await expect(page.getByText(/تم تأكيد اشتراكك/).first()).toBeVisible();
 
   await openAppNav(page, 'الامتحانات');
   await expect(page.getByRole('heading', { name: 'الامتحانات', exact: true }).first()).toBeVisible();

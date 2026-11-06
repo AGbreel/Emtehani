@@ -258,7 +258,7 @@ export default function StudentDashboard({ token, user, onBrowse, onEnter, onVie
         )}
       </Card>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="ui-stagger grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard icon={FileText} label="المحاولات" value={formatNumber(items.length)} note="محاولات مسلّمة" loading={loading} />
         <StatCard icon={Target} label="متوسط النتائج" value={`${formatNumber(average)}%`} note="من النتائج المعتمدة" tone="blue" loading={loading} />
         <StatCard icon={Award} label="أفضل نتيجة" value={`${formatNumber(best)}%`} note="أعلى نسبة معتمدة" tone="emerald" loading={loading} />

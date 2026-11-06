@@ -103,7 +103,7 @@ export default function AuditPage({ token }) {
 
       {error ? <Alert tone="danger" className="mb-4" onClose={() => setError('')}>{error}</Alert> : null}
 
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="ui-stagger mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard icon={Activity} label="إجمالي الأحداث" value={formatNumber(total)} note="في سجل حسابك" loading={loading} />
         <StatCard icon={Radio} label="جلسات مفتوحة" value={formatNumber(items.filter((item) => item.action === 'exam.opened').length)} note="ضمن الصفحة الحالية" tone="emerald" loading={loading} />
         <StatCard icon={CheckCircle2} label="تسليمات" value={formatNumber(items.filter((item) => item.action === 'submission.submitted').length)} note="ضمن الصفحة الحالية" tone="blue" loading={loading} />

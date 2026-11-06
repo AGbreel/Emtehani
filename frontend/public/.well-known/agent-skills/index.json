@@ -1,0 +1,19 @@
+{
+  "$schema": "https://schemas.agentskills.io/discovery/0.2.0/schema.json",
+  "skills": [
+    {
+      "name": "emtehani-platform-overview",
+      "type": "skill-md",
+      "description": "Understand and navigate Emtehani, an Arabic-first school exam platform: roles, exam lifecycle, grading, privacy boundaries, and public resources.",
+      "url": "https://emtehani.vercel.app/.well-known/agent-skills/emtehani-platform-overview/SKILL.md",
+      "digest": "sha256:83a9cc9aabe3684cd3400b8a99063c0c03285590302ec06c0e69929f182a9d35"
+    },
+    {
+      "name": "emtehani-public-api",
+      "type": "skill-md",
+      "description": "Work with the Emtehani REST API: JWT bearer authentication, public endpoints, rate limits, error format, privacy rules, and the documented OAuth/OIDC gap.",
+      "url": "https://emtehani.vercel.app/.well-known/agent-skills/emtehani-public-api/SKILL.md",
+      "digest": "sha256:b8823016daa7eae695ae6634708189d384b843d932c883a5566fb479b966c81d"
+    }
+  ]
+}

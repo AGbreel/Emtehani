@@ -1,0 +1,75 @@
+# robots.txt — Emtehani (https://emtehani.vercel.app)
+#
+# Public marketing and documentation pages are crawlable. Authenticated
+# application surfaces, exam content, student/teacher records, and API
+# endpoints are not public content and must not be crawled or indexed.
+#
+# Content Signals Policy (https://contentsignals.org):
+#   search=yes    — public pages may be indexed and cited by search.
+#   ai-input=yes  — public pages may be read at inference time (RAG/grounding).
+#   ai-train=no   — content must not be used to train or fine-tune AI models.
+#
+# The signal applies to public pages only. Private learner/teacher data and
+# exam content are never licensed for search indexing, AI input, or training.
+
+User-agent: *
+Content-Signal: search=yes, ai-input=yes, ai-train=no
+Allow: /
+Allow: /api-docs/
+Allow: /auth.md
+Allow: /agent.md
+Allow: /llms.txt
+Allow: /.well-known/
+Disallow: /api/
+Disallow: /backend/
+Disallow: /dashboard/
+Disallow: /teacher/
+Disallow: /student/
+Disallow: /exam/
+Disallow: /exams/
+Disallow: /results/
+Disallow: /review/
+Disallow: /lobby/
+Disallow: /admin/
+Disallow: /*?resetToken=
+Disallow: /*?portfolio=
+
+# ---------------------------------------------------------------------------
+# Search crawlers: allowed to index public pages, never private data.
+# ---------------------------------------------------------------------------
+User-agent: OAI-SearchBot
+User-agent: Claude-SearchBot
+User-agent: PerplexityBot
+Content-Signal: search=yes, ai-input=yes, ai-train=no
+Allow: /
+Allow: /api-docs/
+Allow: /auth.md
+Allow: /agent.md
+Allow: /llms.txt
+Allow: /.well-known/
+Disallow: /api/
+Disallow: /backend/
+Disallow: /dashboard/
+Disallow: /teacher/
+Disallow: /student/
+Disallow: /exam/
+Disallow: /exams/
+Disallow: /results/
+Disallow: /review/
+Disallow: /lobby/
+Disallow: /admin/
+Disallow: /*?resetToken=
+Disallow: /*?portfolio=
+
+# ---------------------------------------------------------------------------
+# Training crawlers: content is not available for model training. Their class
+# is blocked from application/API surfaces and content signals deny training.
+# ---------------------------------------------------------------------------
+User-agent: GPTBot
+User-agent: ClaudeBot
+User-agent: Google-Extended
+User-agent: CCBot
+Content-Signal: search=no, ai-input=no, ai-train=no
+Disallow: /
+
+Sitemap: https://emtehani.vercel.app/sitemap.xml

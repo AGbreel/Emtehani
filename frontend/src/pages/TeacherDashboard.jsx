@@ -7,6 +7,7 @@ import {
   CalendarClock,
   ClipboardCheck,
   Clock3,
+  CreditCard,
   FilePlus2,
   FileText,
   GraduationCap,
@@ -75,8 +76,16 @@ export default function TeacherDashboard({ token, user, onNavigate, onCreate, on
       />
 
       {error ? <Alert tone="danger" className="mb-5" onClose={() => setError('')}>{error}</Alert> : null}
+      {user?.subscriptionStatus !== 'Confirmed' ? (
+        <Alert tone="warning" className="mb-5" title="باقتك بانتظار التأكيد">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>اختر باقة Free لتأكيد اشتراكك. لا توجد رسوم أو وسائل دفع.</span>
+            <Button size="xs" icon={CreditCard} onClick={() => onNavigate?.('subscription')}>اختيار الباقة</Button>
+          </div>
+        </Alert>
+      ) : null}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="ui-stagger grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard icon={FileText} label="إجمالي الامتحانات" value={formatNumber(data?.totalExams)} note={`${formatNumber(data?.publishedExams)} منشور`} loading={loading} />
         <StatCard icon={Radio} label="جلسات نشطة" value={formatNumber(data?.activeExams)} note="مفتوحة أو متوقفة الآن" tone="emerald" loading={loading} />
         <StatCard icon={GraduationCap} label="طلاب تمت متابعتهم" value={formatNumber(data?.studentsReached)} note={`${formatNumber(data?.participantCount)} مشاركة`} tone="blue" loading={loading} />
@@ -161,7 +170,7 @@ export default function TeacherDashboard({ token, user, onNavigate, onCreate, on
             </div>
             <div className="grid gap-2">
               {[
-                { label: 'جلسات يمكن فتحها', value: Math.max(0, (data?.publishedExams || 0) - (data?.activeExams || 0)), icon: Radio, tone: 'text-emerald bg-emerald-soft' },
+                { label: 'جلسات يمكن فتحها', value: data?.openableExams ?? Math.max(0, (data?.publishedExams || 0) - (data?.activeExams || 0)), icon: Radio, tone: 'text-emerald bg-emerald-soft' },
                 { label: 'مقالات بانتظار التصحيح', value: data?.pendingReview || 0, icon: ClipboardCheck, tone: 'text-warning bg-warning-soft' },
                 { label: 'إجمالي المشاركات', value: data?.participantCount || 0, icon: Users, tone: 'text-blue bg-blue-soft' },
               ].map((item) => (

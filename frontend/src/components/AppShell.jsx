@@ -1,10 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import { useFocusTrap } from '../lib/useFocusTrap';
+import { request } from '../lib/api';
 import {
   BarChart3,
   BookOpen,
   BookOpenCheck,
   ClipboardCheck,
+  CreditCard,
   ExternalLink,
   FileText,
   GraduationCap,
@@ -13,35 +16,50 @@ import {
   LifeBuoy,
   LogOut,
   Menu,
+  MessageCircle,
   Moon,
   PlusCircle,
+  ShieldCheck,
   Sun,
   UserRound,
   Users,
   X,
 } from 'lucide-react';
 import { Avatar, cn, IconButton, Logo, StatusChip } from './ui';
-
+import AnimatedBackground from './AnimatedBackground';
+import SessionCountdown from './SessionCountdown';
 const teacherNav = [
   { key: 'dashboard', label: 'مركز التحكم', shortLabel: 'المركز', icon: LayoutDashboard },
+  { key: 'chat', label: 'المحادثات', shortLabel: 'المحادثات', icon: MessageCircle },
   { key: 'exams', label: 'الامتحانات', shortLabel: 'اختبارات', icon: FileText },
   { key: 'create', label: 'إنشاء امتحان', shortLabel: 'إنشاء', icon: PlusCircle },
   { key: 'results', label: 'النتائج', icon: BarChart3 },
   { key: 'essays', label: 'مراجعة المقالات', icon: ClipboardCheck },
   { key: 'requests', label: 'طلبات الطلاب', icon: UserRound },
   { key: 'students', label: 'إدارة الطلاب', shortLabel: 'الطلاب', icon: Users },
+  { key: 'teacher-profile', label: 'صفحتي التعريفية', shortLabel: 'تعريفي', icon: UserRound },
+  { key: 'subscription', label: 'الاشتراك', icon: CreditCard },
   { key: 'audit', label: 'سجل النشاط', icon: History },
 ];
 
 const studentNav = [
   { key: 'dashboard', label: 'نظرة عامة', shortLabel: 'الرئيسية', icon: LayoutDashboard },
+  { key: 'chat', label: 'المحادثات', shortLabel: 'المحادثات', icon: MessageCircle },
   { key: 'available', label: 'الامتحانات المتاحة', shortLabel: 'المتاحة', icon: BookOpenCheck },
   { key: 'results', label: 'نتائجي', icon: BarChart3 },
-  { key: 'teachers', label: 'المدرسون', icon: GraduationCap },
+  { key: 'teachers', label: 'المدرسون', shortLabel: 'المدرسون', icon: GraduationCap },
+  { key: 'profile', label: 'ملفي الأكاديمي', shortLabel: 'ملفي', icon: UserRound },
+];
+
+const adminNav = [
+  { key: 'admin', label: 'لوحة الإدارة', shortLabel: 'الإدارة', icon: ShieldCheck },
+  { key: 'chat', label: 'المحادثات', shortLabel: 'المحادثات', icon: MessageCircle },
+  { key: 'admin-teachers', label: 'المدرسون والاشتراكات', shortLabel: 'المدرسون', icon: Users },
 ];
 
 const pageMeta = {
   dashboard: { title: 'مركز التحكم', eyebrow: 'مساحة العمل' },
+  chat: { title: 'المحادثات', eyebrow: 'تواصل مباشر' },
   exams: { title: 'الامتحانات', eyebrow: 'إدارة المحتوى' },
   create: { title: 'إنشاء امتحان', eyebrow: 'بناء جديد' },
   'exam-detail': { title: 'تفاصيل الامتحان', eyebrow: 'إدارة الجلسة' },
@@ -49,7 +67,12 @@ const pageMeta = {
   essays: { title: 'مراجعة المقالات', eyebrow: 'تصحيح يدوي' },
   requests: { title: 'طلبات الطلاب', eyebrow: 'إدارة التسجيل' },
   students: { title: 'إدارة الطلاب', eyebrow: 'متابعة الطلاب' },
+  'teacher-profile': { title: 'صفحتي التعريفية', eyebrow: 'ملفي العام' },
   teachers: { title: 'المدرسون', eyebrow: 'اختيار المدرس' },
+  profile: { title: 'ملفي الأكاديمي', eyebrow: 'بياناتي وسجلي' },
+  subscription: { title: 'الاشتراك', eyebrow: 'الخطة الحالية' },
+  admin: { title: 'لوحة الإدارة', eyebrow: 'إشراف المنصة' },
+  'admin-teachers': { title: 'المدرسون والاشتراكات', eyebrow: 'إشراف المنصة' },
   audit: { title: 'سجل النشاط', eyebrow: 'تتبع العمليات' },
   available: { title: 'الامتحانات المتاحة', eyebrow: 'بوابة الطالب' },
   lobby: { title: 'غرفة الانتظار', eyebrow: 'الامتحان' },
@@ -58,7 +81,22 @@ const pageMeta = {
   'essay-review': { title: 'تصحيح المحاولة', eyebrow: 'مراجعة يدوية' },
 };
 
-function NavButton({ item, active, onClick, compact = false }) {
+function UnreadBadge({ count, className = '' }) {
+  if (!count) return null;
+  return (
+    <motion.span
+      key={count}
+      initial={{ scale: 0.5, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: 'spring', stiffness: 520, damping: 26 }}
+      className={cn('ui-number grid min-w-[19px] place-items-center rounded-full bg-danger px-1 text-[9.5px] font-extrabold leading-[18px] text-white shadow-sm', className)}
+    >
+      {count > 99 ? '99+' : count}
+    </motion.span>
+  );
+}
+
+function NavButton({ item, active, onClick, compact = false, badge = 0 }) {
   const Icon = item.icon;
   return (
     <button
@@ -73,12 +111,13 @@ function NavButton({ item, active, onClick, compact = false }) {
     >
       <Icon size={18} strokeWidth={active ? 2.2 : 1.9} className="shrink-0" />
       <span className={cn('flex-1 truncate', compact && 'sr-only')}>{item.label}</span>
+      {badge > 0 ? <UnreadBadge count={badge} className={compact ? 'absolute -top-1.5 left-1' : ''} /> : null}
       {active ? <motion.span layoutId="nav-active" className="absolute inset-y-2 right-0 w-[3px] rounded-full bg-primary" /> : null}
     </button>
   );
 }
 
-function SidebarContent({ user, nav, activePage, onNavigate, onLogout, onClose, theme, onToggleTheme }) {
+function SidebarContent({ user, nav, activePage, onNavigate, onLogout, onClose, theme, onToggleTheme, chatUnread = 0 }) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between px-5 pb-5 pt-5">
@@ -92,7 +131,7 @@ function SidebarContent({ user, nav, activePage, onNavigate, onLogout, onClose, 
           <p className="truncate text-[13px] font-bold text-ink">{user?.fullName || 'مستخدم امتحاني'}</p>
           <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted">
             <UserRound size={11} />
-            {user?.role === 'Teacher' ? 'حساب مدرس' : 'حساب طالب'}
+            {user?.role === 'Teacher' ? 'حساب مدرس' : user?.role === 'Admin' ? 'حساب إدارة' : 'حساب طالب'}
           </div>
         </div>
         <StatusChip status="Active" showIcon={false} className="px-2 py-1 text-[10px]" />
@@ -102,7 +141,7 @@ function SidebarContent({ user, nav, activePage, onNavigate, onLogout, onClose, 
         <p className="mb-2 px-3 text-[10.5px] font-extrabold tracking-[0.16em] text-subtle">القائمة الرئيسية</p>
         <div className="grid gap-1">
           {nav.map((item) => (
-            <NavButton key={item.key} item={item} active={activePage === item.key} onClick={() => { onNavigate(item.key); onClose?.(); }} />
+            <NavButton key={item.key} item={item} active={activePage === item.key} badge={item.key === 'chat' ? chatUnread : 0} onClick={() => { onNavigate(item.key); onClose?.(); }} />
           ))}
         </div>
 
@@ -136,39 +175,53 @@ function SidebarContent({ user, nav, activePage, onNavigate, onLogout, onClose, 
   );
 }
 
-export default function AppShell({ user, page, activePage, title, subtitle, children, onNavigate, onLogout, theme, onToggleTheme }) {
+export default function AppShell({ user, page, activePage, title, subtitle, children, onNavigate, onLogout, theme, onToggleTheme, token }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const nav = user?.role === 'Teacher' ? teacherNav : studentNav;
+  const [chatUnread, setChatUnread] = useState(0);
+  const mobileNavRef = useRef(null);
+  const nav = user?.role === 'Teacher' ? teacherNav : user?.role === 'Admin' ? adminNav : studentNav;
   const meta = pageMeta[page] || pageMeta.dashboard;
   const visibleNav = nav.slice(0, 4);
+  useFocusTrap(mobileOpen, mobileNavRef, () => setMobileOpen(false));
+
+  const loadUnread = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await request('/api/chat/unread', { token });
+      setChatUnread(Number(data?.total) || 0);
+    } catch {
+      // Badge is non-critical; keep the last known count on transient errors.
+    }
+  }, [token]);
 
   useEffect(() => {
-    if (!mobileOpen) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') setMobileOpen(false);
-    };
-    document.addEventListener('keydown', onKeyDown);
+    loadUnread();
+    const timer = setInterval(loadUnread, 25000);
+    const onUpdated = () => { loadUnread(); };
+    const onVisible = () => { if (document.visibilityState === 'visible') loadUnread(); };
+    window.addEventListener('emtehani:chat-updated', onUpdated);
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
-      document.body.style.overflow = previous;
-      document.removeEventListener('keydown', onKeyDown);
+      clearInterval(timer);
+      window.removeEventListener('emtehani:chat-updated', onUpdated);
+      document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [mobileOpen]);
+  }, [loadUnread]);
 
   return (
-    <div className="min-h-dvh bg-canvas text-ink">
+    <div className="relative isolate min-h-dvh bg-canvas text-ink">
+      <AnimatedBackground variant="app" grid={false} />
       <a href="#main-content" className="fixed right-4 top-4 z-[100] -translate-y-24 rounded-xl bg-primary px-4 py-3 text-sm font-bold text-white shadow-card transition focus:translate-y-0">تجاوز إلى المحتوى</a>
       <aside className="fixed inset-y-0 right-0 z-40 hidden w-[280px] border-l border-line bg-surface lg:block">
-        <SidebarContent user={user} nav={nav} activePage={activePage} onNavigate={onNavigate} onLogout={onLogout} theme={theme} onToggleTheme={onToggleTheme} />
+        <SidebarContent user={user} nav={nav} activePage={activePage} onNavigate={onNavigate} onLogout={onLogout} theme={theme} onToggleTheme={onToggleTheme} chatUnread={chatUnread} />
       </aside>
 
       <AnimatePresence>
         {mobileOpen ? (
           <>
             <motion.button type="button" aria-label="إغلاق القائمة" className="fixed inset-0 z-50 bg-[rgba(3,7,18,.5)] backdrop-blur-sm lg:hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setMobileOpen(false)} />
-            <motion.aside role="dialog" aria-modal="true" aria-label="قائمة التنقل" className="fixed inset-y-0 right-0 z-[60] w-[min(88vw,310px)] border-l border-line bg-surface shadow-2xl lg:hidden" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', stiffness: 360, damping: 34 }}>
-              <SidebarContent user={user} nav={nav} activePage={activePage} onNavigate={onNavigate} onLogout={onLogout} onClose={() => setMobileOpen(false)} theme={theme} onToggleTheme={onToggleTheme} />
+            <motion.aside ref={mobileNavRef} role="dialog" aria-modal="true" aria-label="قائمة التنقل" tabIndex={-1} className="fixed inset-y-0 right-0 z-[60] w-[min(88vw,310px)] border-l border-line bg-surface shadow-2xl lg:hidden" initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', stiffness: 360, damping: 34 }}>
+              <SidebarContent user={user} nav={nav} activePage={activePage} onNavigate={onNavigate} onLogout={onLogout} onClose={() => setMobileOpen(false)} theme={theme} onToggleTheme={onToggleTheme} chatUnread={chatUnread} />
             </motion.aside>
           </>
         ) : null}
@@ -185,6 +238,8 @@ export default function AppShell({ user, page, activePage, title, subtitle, chil
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <div className="md:hidden"><SessionCountdown compact /></div>
+              <div className="hidden md:block"><SessionCountdown /></div>
               <IconButton label={theme === 'dark' ? 'الوضع الفاتح' : 'الوضع الداكن'} onClick={onToggleTheme} className="hidden sm:grid">
                 {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
               </IconButton>
@@ -197,7 +252,7 @@ export default function AppShell({ user, page, activePage, title, subtitle, chil
                 <Avatar name={user?.fullName} size="sm" />
                 <div className="hidden min-w-0 sm:block">
                   <p className="max-w-[120px] truncate text-[11.5px] font-bold leading-tight text-ink">{user?.fullName}</p>
-                  <p className="text-[10px] text-muted">{user?.role === 'Teacher' ? 'مدرس' : 'طالب'}</p>
+                  <p className="text-[10px] text-muted">{user?.role === 'Teacher' ? 'مدرس' : user?.role === 'Admin' ? 'إدارة' : 'طالب'}</p>
                 </div>
                 <button type="button" onClick={onLogout} aria-label="تسجيل الخروج" title="تسجيل الخروج" className="ms-1 text-subtle transition hover:text-danger"><LogOut size={14} /></button>
               </div>
@@ -222,8 +277,11 @@ export default function AppShell({ user, page, activePage, title, subtitle, chil
             const Icon = item.icon;
             const active = activePage === item.key;
             return (
-              <button key={item.key} type="button" aria-current={active ? 'page' : undefined} onClick={() => onNavigate(item.key)} className={cn('flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-[10px] px-1 py-1.5 text-[10.5px] font-bold transition', active ? 'text-primary' : 'text-muted')}>
-                <span className={cn('grid size-8 place-items-center rounded-[9px]', active ? 'bg-primary-soft' : '')}><Icon size={17} /></span>
+              <button key={item.key} type="button" aria-current={active ? 'page' : undefined} onClick={() => onNavigate(item.key)} className={cn('relative flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-[10px] px-1 py-1.5 text-[10.5px] font-bold transition', active ? 'text-primary' : 'text-muted')}>
+                <span className={cn('relative grid size-8 place-items-center rounded-[9px]', active ? 'bg-primary-soft' : '')}>
+                  <Icon size={17} />
+                  {item.key === 'chat' && chatUnread > 0 ? <UnreadBadge count={chatUnread} className="absolute -top-1 -left-1.5 border-2 border-surface" /> : null}
+                </span>
                 <span className="max-w-full truncate">{item.shortLabel || item.label}</span>
               </button>
             );

@@ -116,8 +116,8 @@ export default function ReviewDetailPage({ token, user, submissionId, onBack, on
                 </div>
                 <div>
                   <p className="text-[11.5px] font-bold text-muted">النتيجة</p>
-                  <p className="mt-1 font-display text-[18px] font-semibold leading-tight tracking-[-0.03em] text-ink">بانتظار اعتماد النتائج</p>
-                  <p className="mt-1.5 max-w-[210px] text-[10.5px] leading-5 text-muted">ستظهر الدرجة بعد انتهاء جلسة الامتحان واعتماد المدرس للنتائج.</p>
+                  <p className="mt-1 font-display text-[18px] font-semibold leading-tight tracking-[-0.03em] text-ink">بانتظار موعد إظهار النتائج</p>
+                  <p className="mt-1.5 max-w-[210px] text-[10.5px] leading-5 text-muted">ستظهر الدرجة وفق موعد إظهار النتائج الذي حدده المدرس، وبعد اكتمال أي تصحيح يدوي مطلوب.</p>
                   <div className="mt-2"><StatusChip status={data.status} /></div>
                 </div>
               </>
@@ -156,7 +156,7 @@ export default function ReviewDetailPage({ token, user, submissionId, onBack, on
       </Card>
 
       {resultsAvailable ? (
-        <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="ui-stagger mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard icon={CheckCircleIcon} label="إجابات صحيحة" value={formatNumber(answers.filter((answer) => answer.type !== 'Essay' && Number(answer.awardedPoints) >= Number(answer.points)).length)} tone="emerald" />
           <StatCard icon={XCircleIcon} label="إجابات خاطئة" value={formatNumber(answers.filter((answer) => answer.type !== 'Essay' && answer.awardedPoints != null && Number(answer.awardedPoints) < Number(answer.points)).length)} tone="danger" />
           <StatCard icon={PenLine} label="أسئلة مقالية" value={formatNumber(essayAnswers.length)} note={`${formatNumber(pendingEssays.length)} بانتظار التصحيح`} tone="warning" />

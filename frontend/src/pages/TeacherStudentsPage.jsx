@@ -6,12 +6,19 @@ import {
   CheckCircle2,
   Eye,
   Filter,
+  History,
+  Link2,
+  Pencil,
+  Phone,
   RefreshCw,
   Search,
+  Send,
   ShieldCheck,
   ShieldOff,
+  Ticket,
   Unlink,
   UserCheck,
+  UserPlus,
   UserRound,
   Users,
   UserX,
@@ -22,8 +29,10 @@ import {
   Badge,
   Button,
   Card,
+  CopyChip,
   EmptyState,
   Field,
+  Input,
   Modal,
   PageHeader,
   Select,
@@ -32,13 +41,28 @@ import {
   cn,
 } from '../components/ui';
 import { request } from '../lib/api';
-import { EDUCATION_STAGES, gradesForStage } from '../lib/education';
+import { EDUCATION_STAGES, gradesForStage, isValidEducation } from '../lib/education';
 import { formatDate, formatNumber } from '../lib/format';
+import { isValidPhone, normalizeDisplayName, parentNameError, phoneDigits, studentFullNameError } from '../lib/validation';
 
 const statusMeta = {
   Active: { label: 'نشط', tone: 'emerald', icon: CheckCircle2 },
   Banned: { label: 'ممنوع من امتحان', tone: 'warning', icon: Ban },
   Suspended: { label: 'موقوف من كل الامتحانات', tone: 'danger', icon: ShieldOff },
+};
+
+const linkRequestMeta = {
+  Pending: { label: 'طلب معلّق', tone: 'warning' },
+  Accepted: { label: 'مرتبط بك', tone: 'emerald' },
+  Rejected: { label: 'مرفوض', tone: 'danger' },
+  Unlinked: { label: 'تم فك الارتباط', tone: 'neutral' },
+};
+
+const invitationMeta = {
+  Pending: { label: 'بانتظار الاستخدام', tone: 'warning' },
+  Accepted: { label: 'مستخدمة', tone: 'emerald' },
+  Expired: { label: 'منتهية', tone: 'neutral' },
+  Cancelled: { label: 'ملغاة', tone: 'danger' },
 };
 
 function statusOf(value) {
@@ -73,6 +97,28 @@ export default function TeacherStudentsPage({ token }) {
   const [busy, setBusy] = useState(false);
   const [busyStudent, setBusyStudent] = useState('');
   const [busyExam, setBusyExam] = useState('');
+
+  const [addOpen, setAddOpen] = useState(false);
+  const [addMode, setAddMode] = useState('lookup');
+  const [lookupPhone, setLookupPhone] = useState('');
+  const [lookupBusy, setLookupBusy] = useState(false);
+  const [lookupResult, setLookupResult] = useState(null);
+  const [lookupError, setLookupError] = useState('');
+  const [requestBusy, setRequestBusy] = useState('');
+  const [inviteForm, setInviteForm] = useState({ fullName: '', studentPhone: '', parentPhone: '', parentName: '', stage: '', grade: '' });
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteError, setInviteError] = useState('');
+  const [inviteResult, setInviteResult] = useState(null);
+  const [invitations, setInvitations] = useState([]);
+  const [invitationsLoading, setInvitationsLoading] = useState(false);
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
+  const [editForm, setEditForm] = useState({ fullName: '', studentPhone: '', parentPhone: '', parentName: '', stage: '', grade: '' });
+  const [editHistory, setEditHistory] = useState(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState('');
 
   const requestSeq = useRef(0);
 
@@ -126,6 +172,204 @@ export default function TeacherStudentsPage({ token }) {
       try {
         setDetail(await fetchDetail(studentId));
       } catch { /* keep the previous snapshot if the refresh fails */ }
+    }
+  }
+
+  async function loadInvitations() {
+    setInvitationsLoading(true);
+    try {
+      const rows = await request('/api/teacher/students/invitations', { token });
+      setInvitations(Array.isArray(rows) ? rows : []);
+    } catch {
+      setInvitations([]);
+    } finally {
+      setInvitationsLoading(false);
+    }
+  }
+
+  function openAddStudent(mode = 'lookup') {
+    setAddOpen(true);
+    setAddMode(mode);
+    setLookupPhone('');
+    setLookupResult(null);
+    setLookupError('');
+    setInviteError('');
+    setInviteResult(null);
+    setInviteForm({ fullName: '', studentPhone: '', parentPhone: '', parentName: '', stage: '', grade: '' });
+    loadInvitations();
+  }
+
+  async function runLookup(event) {
+    event?.preventDefault();
+    const phone = lookupPhone.replace(/[\s-]/g, '');
+    if (!/^\+?\d{7,15}$/.test(phone)) return setLookupError('أدخل رقم هاتف صحيحاً للبحث (7 إلى 15 رقماً).');
+    setLookupBusy(true);
+    setLookupError('');
+    setLookupResult(null);
+    try {
+      const result = await request(`/api/teacher/students/lookup?phone=${encodeURIComponent(phone)}`, { token });
+      setLookupResult(result);
+    } catch (err) {
+      setLookupError(err.message);
+    } finally {
+      setLookupBusy(false);
+    }
+  }
+
+  async function sendLinkRequest(item) {
+    setRequestBusy(item.studentId);
+    setError('');
+    setNotice('');
+    try {
+      const result = await request('/api/teacher/students/request', {
+        token,
+        method: 'POST',
+        body: JSON.stringify({ studentId: item.studentId }),
+      });
+      setNotice(result?.message || 'تم إرسال طلب الارتباط.');
+      await runLookup();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRequestBusy('');
+    }
+  }
+
+  function switchToInvite(phone = '') {
+    setAddMode('invite');
+    setInviteError('');
+    setInviteForm((current) => ({
+      ...current,
+      studentPhone: phone || lookupPhone.replace(/[\s-]/g, ''),
+      stage: current.stage || lookupResult?.items?.[0]?.stage || '',
+      grade: current.grade || lookupResult?.items?.[0]?.grade || '',
+    }));
+  }
+
+  function updateInvite(field) {
+    return (event) => setInviteForm((current) => ({ ...current, [field]: event.target.value }));
+  }
+
+  function updateInviteStage(event) {
+    const stage = event.target.value;
+    setInviteForm((current) => ({ ...current, stage, grade: '' }));
+  }
+
+  async function submitInvite(event) {
+    event.preventDefault();
+    setInviteError('');
+    setInviteResult(null);
+    const inviteNameError = studentFullNameError(inviteForm.fullName);
+    if (inviteNameError) return setInviteError(inviteNameError);
+    if (!isValidPhone(inviteForm.studentPhone)) return setInviteError('أدخل رقم هاتف طالب صحيحاً.');
+    if (!isValidPhone(inviteForm.parentPhone)) return setInviteError('أدخل رقم هاتف ولي أمر صحيحاً.');
+    if (phoneDigits(inviteForm.studentPhone) === phoneDigits(inviteForm.parentPhone)) return setInviteError('رقم هاتف الطالب يجب أن يختلف عن رقم ولي الأمر.');
+    const inviteParentError = parentNameError(inviteForm.parentName);
+    if (inviteParentError) return setInviteError(inviteParentError);
+    if (!isValidEducation(inviteForm.stage, inviteForm.grade)) return setInviteError('اختر المرحلة والصف الدراسي المناسبين.');
+    setInviteBusy(true);
+    try {
+      const result = await request('/api/teacher/students/invite', {
+        token,
+        method: 'POST',
+        body: JSON.stringify({
+          fullName: normalizeDisplayName(inviteForm.fullName),
+          studentPhone: phoneDigits(inviteForm.studentPhone),
+          parentPhone: phoneDigits(inviteForm.parentPhone),
+          parentName: normalizeDisplayName(inviteForm.parentName),
+          stage: inviteForm.stage,
+          grade: inviteForm.grade,
+        }),
+      });
+      setInviteResult(result);
+      await loadInvitations();
+    } catch (err) {
+      setInviteError(err.message);
+    } finally {
+      setInviteBusy(false);
+    }
+  }
+
+  async function openEdit(row) {
+    setEditTarget(row);
+    setEditOpen(true);
+    setEditLoading(true);
+    setEditError('');
+    setEditHistory(null);
+    const fallback = {
+      fullName: row.fullName || '',
+      studentPhone: '',
+      parentPhone: '',
+      parentName: '',
+      stage: row.stage || '',
+      grade: row.grade || '',
+    };
+    setEditForm(fallback);
+    try {
+      const data = await request(`/api/teacher/students/${row.studentId}/academic-history`, { token });
+      setEditHistory(data);
+      setEditForm({
+        fullName: data?.student?.fullName || fallback.fullName,
+        studentPhone: data?.student?.studentPhone || '',
+        parentPhone: data?.student?.parentPhone || '',
+        parentName: data?.student?.parentName || '',
+        stage: data?.student?.stage || fallback.stage,
+        grade: data?.student?.grade || fallback.grade,
+      });
+    } catch (err) {
+      setEditError(err.message);
+    } finally {
+      setEditLoading(false);
+    }
+  }
+
+  function updateEdit(field) {
+    return (event) => setEditForm((current) => ({ ...current, [field]: event.target.value }));
+  }
+
+  function updateEditStage(event) {
+    const stage = event.target.value;
+    setEditForm((current) => ({ ...current, stage, grade: '' }));
+  }
+
+  async function saveEdit(event) {
+    event.preventDefault();
+    if (!editTarget) return;
+    setEditError('');
+    const currentName = normalizeDisplayName(editHistory?.student?.fullName || editTarget?.fullName || '');
+    const editNameUnchanged = normalizeDisplayName(editForm.fullName) === currentName;
+    if (!editNameUnchanged) {
+      const editNameError = studentFullNameError(editForm.fullName);
+      if (editNameError) return setEditError(editNameError);
+    }
+    if (!isValidPhone(editForm.studentPhone)) return setEditError('أدخل رقم هاتف طالب صحيحاً.');
+    if (!isValidPhone(editForm.parentPhone)) return setEditError('أدخل رقم هاتف ولي أمر صحيحاً.');
+    if (phoneDigits(editForm.studentPhone) === phoneDigits(editForm.parentPhone)) return setEditError('رقم هاتف الطالب يجب أن يختلف عن رقم ولي الأمر.');
+    const editParentError = parentNameError(editForm.parentName);
+    if (editParentError) return setEditError(editParentError);
+    if (!isValidEducation(editForm.stage, editForm.grade)) return setEditError('اختر المرحلة والصف الدراسي المناسبين.');
+    setEditBusy(true);
+    try {
+      const result = await request(`/api/teacher/students/${editTarget.studentId}/profile`, {
+        token,
+        method: 'PUT',
+        body: JSON.stringify({
+          fullName: normalizeDisplayName(editForm.fullName),
+          studentPhone: phoneDigits(editForm.studentPhone),
+          parentPhone: phoneDigits(editForm.parentPhone),
+          parentName: normalizeDisplayName(editForm.parentName),
+          stage: editForm.stage,
+          grade: editForm.grade,
+        }),
+      });
+      setNotice(result?.message || 'تم تحديث بيانات الطالب.');
+      setEditOpen(false);
+      setEditTarget(null);
+      await refreshAfter(editTarget.studentId);
+    } catch (err) {
+      setEditError(err.message);
+    } finally {
+      setEditBusy(false);
     }
   }
 
@@ -280,13 +524,18 @@ export default function TeacherStudentsPage({ token }) {
         eyebrow="إدارة الطلاب"
         title="إدارة الطلاب"
         description="تابع الطلاب المرتبطين بك، وحدد من يمكنه دخول كل امتحان. فك الارتباط أو الإيقاف لا يحذف أي محاولة أو نتيجة سابقة."
-        action={<Button variant="secondary" size="sm" icon={RefreshCw} loading={refreshing} onClick={() => load(true)}>تحديث</Button>}
+        action={(
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" size="sm" icon={RefreshCw} loading={refreshing} onClick={() => load(true)}>تحديث</Button>
+            <Button size="sm" icon={UserPlus} onClick={() => openAddStudent('lookup')}>إضافة طالب</Button>
+          </div>
+        )}
       />
 
       {error ? <Alert tone="danger" className="mb-4" onClose={() => setError('')}>{error}</Alert> : null}
       {notice ? <Alert tone="success" className="mb-4" onClose={() => setNotice('')}>{notice}</Alert> : null}
 
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="ui-stagger mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard icon={Users} label="الطلاب المرتبطون" value={formatNumber(summary.total)} note="ارتباط نشط بك" loading={loading} />
         <StatCard icon={UserCheck} label="نشطون" value={formatNumber(summary.active)} note="يمكنهم دخول امتحاناتك" tone="emerald" loading={loading} />
         <StatCard icon={Ban} label="ممنوعون من امتحان" value={formatNumber(summary.banned)} note="منع جزئي لامتحان محدد" tone="warning" loading={loading} />
@@ -404,6 +653,7 @@ export default function TeacherStudentsPage({ token }) {
         size="lg"
         footer={detail ? (
           <>
+            <Button size="sm" variant="secondary" icon={Pencil} onClick={() => { setDetailTarget(null); setDetail(null); openEdit(detail); }}>تعديل البيانات</Button>
             {detail.suspendedAtUtc ? (
               <Button size="sm" variant="success" icon={ShieldCheck} loading={busyStudent === detail.studentId} onClick={() => reactivate(detail)}>إعادة التفعيل</Button>
             ) : (
@@ -420,22 +670,53 @@ export default function TeacherStudentsPage({ token }) {
           <Alert tone="danger">{detailError}</Alert>
         ) : detail ? (
           <div>
-            <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <div className="rounded-[12px] border border-line bg-surface-soft px-3 py-2">
-                <p className="text-[10.5px] font-bold text-muted">الحالة</p>
-                <div className="mt-1">{selectedStatus ? <Badge tone={selectedStatus.tone}>{selectedStatus.label}</Badge> : null}</div>
+            <div className="mb-4 grid gap-2 sm:grid-cols-2">
+              <div className="rounded-[13px] border border-line bg-surface-soft p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-[11.5px] font-bold text-ink">بيانات الطالب</p>
+                  {selectedStatus ? <Badge tone={selectedStatus.tone}>{selectedStatus.label}</Badge> : null}
+                </div>
+                <dl className="grid gap-1.5 text-[11px]">
+                  <div className="flex items-start justify-between gap-2"><dt className="text-muted">الاسم الرباعي</dt><dd className="text-left font-bold text-ink">{detail.fullName || '—'}</dd></div>
+                  <div className="flex items-start justify-between gap-2"><dt className="text-muted">هاتف الطالب</dt><dd className="text-left font-bold text-ink" dir="ltr">{detail.studentPhone || 'غير مسجل'}</dd></div>
+                  <div className="flex items-start justify-between gap-2"><dt className="text-muted">هاتف ولي الأمر</dt><dd className="text-left font-bold text-ink" dir="ltr">{detail.parentPhone || 'غير مسجل'}</dd></div>
+                  <div className="flex items-start justify-between gap-2"><dt className="text-muted">اسم ولي الأمر</dt><dd className="text-left font-bold text-ink">{detail.parentName || 'غير مسجل'}</dd></div>
+                  <div className="flex items-start justify-between gap-2"><dt className="text-muted">المرحلة / الصف</dt><dd className="text-left font-bold text-ink">{detail.stage || '—'} · {detail.grade || '—'}</dd></div>
+                </dl>
               </div>
-              <div className="rounded-[12px] border border-line bg-surface-soft px-3 py-2">
-                <p className="text-[10.5px] font-bold text-muted">المحاولات</p>
-                <p className="ui-number mt-1 text-[15px] font-bold text-ink">{formatNumber(detail.attemptsCount)}</p>
-              </div>
-              <div className="rounded-[12px] border border-line bg-surface-soft px-3 py-2">
-                <p className="text-[10.5px] font-bold text-muted">متاحة الآن</p>
-                <p className="ui-number mt-1 text-[15px] font-bold text-emerald">{formatNumber(detail.availableExamCount)}</p>
-              </div>
-              <div className="rounded-[12px] border border-line bg-surface-soft px-3 py-2">
-                <p className="text-[10.5px] font-bold text-muted">ممنوع منها</p>
-                <p className="ui-number mt-1 text-[15px] font-bold text-warning">{formatNumber(detail.bannedExamCount)}</p>
+              <div className="rounded-[13px] border border-line bg-surface-soft p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-[11.5px] font-bold text-ink">المحاولات</p>
+                  <span className="text-[10px] text-subtle">تُحتسب عند بدء المحاولة فعلياً</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-[10px] border border-line bg-surface px-2.5 py-2">
+                    <p className="text-[10px] text-muted">المسموح</p>
+                    <p className="ui-number mt-0.5 text-[17px] font-bold text-ink">{formatNumber(detail.attempts?.allowed ?? 0)}</p>
+                  </div>
+                  <div className="rounded-[10px] border border-line bg-surface px-2.5 py-2">
+                    <p className="text-[10px] text-muted">المستخدم</p>
+                    <p className="ui-number mt-0.5 text-[17px] font-bold text-primary">{formatNumber(detail.attempts?.used ?? 0)}</p>
+                  </div>
+                  <div className="rounded-[10px] border border-line bg-surface px-2.5 py-2">
+                    <p className="text-[10px] text-muted">المكتمل</p>
+                    <p className="ui-number mt-0.5 text-[17px] font-bold text-emerald">{formatNumber(detail.attempts?.completed ?? 0)}</p>
+                  </div>
+                  <div className="rounded-[10px] border border-line bg-surface px-2.5 py-2">
+                    <p className="text-[10px] text-muted">المتبقي</p>
+                    <p className="ui-number mt-0.5 text-[17px] font-bold text-warning">{formatNumber(detail.attempts?.remaining ?? 0)}</p>
+                  </div>
+                </div>
+                {(detail.attempts?.abandoned > 0 || detail.attempts?.exceptionUsed > 0) ? (
+                  <p className="mt-2 text-[10px] leading-5 text-subtle">
+                    {detail.attempts.abandoned > 0 ? `محاولات متروكة: ${formatNumber(detail.attempts.abandoned)} · ` : ''}
+                    {detail.attempts.exceptionUsed > 0 ? `محاولات استثنائية إضافية: ${formatNumber(detail.attempts.exceptionUsed)}` : ''}
+                  </p>
+                ) : null}
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <Badge tone="emerald">{formatNumber(detail.availableExamCount)} متاحة الآن</Badge>
+                  <Badge tone="warning">{formatNumber(detail.bannedExamCount)} ممنوع منها</Badge>
+                </div>
               </div>
             </div>
 
@@ -460,7 +741,8 @@ export default function TeacherStudentsPage({ token }) {
                           {!exam.isPublished ? <Badge tone="neutral">غير منشور</Badge> : null}
                         </div>
                         <p className="mt-0.5 text-[10.5px] text-subtle">
-                          {exam.examStatus || 'مسودة'} · {formatNumber(exam.attemptsCount)} محاولة
+                          {exam.examStatus || 'مسودة'} · محاولات: {formatNumber(exam.attempts?.used ?? exam.attemptsCount)} / {formatNumber(exam.attempts?.allowed ?? exam.maxAttempts ?? 0)}
+                          {' '}· مكتملة: {formatNumber(exam.attempts?.completed ?? 0)} · متبقية: {formatNumber(exam.attempts?.remaining ?? 0)}
                           {exam.bannedAtUtc ? ` · مُنع في ${formatDate(exam.bannedAtUtc)}` : ''}
                         </p>
                       </div>
@@ -536,6 +818,240 @@ export default function TeacherStudentsPage({ token }) {
               ? 'يمكنك إعادة تفعيله في أي وقت من صفحة إدارة الطلاب. المحاولات والنتائج السابقة محفوظة.'
               : 'لن يُحذف حساب الطالب أو محاولاته أو نتائجه، ولن تتأثر علاقته بمدرسين آخرين. يمكنه إرسال طلب ارتباط جديد لاحقاً.'}
         </Alert>
+      </Modal>
+
+      <Modal
+        open={addOpen}
+        onClose={() => { if (!inviteBusy && !lookupBusy) setAddOpen(false); }}
+        title="إضافة طالب"
+        description="ابحث عن حساب موجود برقم الهاتف وأرسل طلب ارتباط، أو أنشئ دعوة لطالب جديد يستكمل تسجيله بنفسه."
+        icon={UserPlus}
+        size="lg"
+      >
+        <div className="mb-4 grid grid-cols-2 gap-1.5 rounded-[12px] border border-line bg-surface-soft p-1">
+          <button type="button" onClick={() => setAddMode('lookup')} className={cn('flex min-h-10 items-center justify-center gap-1.5 rounded-[9px] text-[11.5px] font-bold transition', addMode === 'lookup' ? 'bg-surface text-primary shadow-sm' : 'text-muted hover:text-ink')}>
+            <Search size={13} />بحث برقم الهاتف
+          </button>
+          <button type="button" onClick={() => setAddMode('invite')} className={cn('flex min-h-10 items-center justify-center gap-1.5 rounded-[9px] text-[11.5px] font-bold transition', addMode === 'invite' ? 'bg-surface text-primary shadow-sm' : 'text-muted hover:text-ink')}>
+            <Ticket size={13} />دعوة طالب جديد
+          </button>
+        </div>
+
+        {addMode === 'lookup' ? (
+          <div>
+            <form onSubmit={runLookup} className="flex flex-col gap-2 sm:flex-row">
+              <div className="relative flex-1">
+                <Phone size={15} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-subtle" />
+                <Input dir="ltr" inputMode="tel" value={lookupPhone} onChange={(event) => setLookupPhone(event.target.value)} placeholder="01xxxxxxxxx" className="pl-3 pr-9 text-left" aria-label="رقم هاتف الطالب" />
+              </div>
+              <Button type="submit" size="sm" icon={Search} loading={lookupBusy}>بحث</Button>
+            </form>
+            {lookupError ? <Alert tone="danger" className="mt-3">{lookupError}</Alert> : null}
+
+            {lookupResult ? (
+              lookupResult.found ? (
+                <div className="mt-3 grid gap-2">
+                  {lookupResult.items.map((item) => {
+                    const meta = item.requestStatus ? linkRequestMeta[item.requestStatus] : null;
+                    return (
+                      <div key={item.studentId} className="flex flex-col gap-2 rounded-[12px] border border-line bg-surface-soft p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <p className="truncate text-[12.5px] font-bold text-ink">{item.fullName}</p>
+                            {item.masked ? <Badge tone="neutral">بيانات مخفية</Badge> : null}
+                            {meta ? <Badge tone={meta.tone}>{meta.label}</Badge> : null}
+                          </div>
+                          <p className="mt-0.5 text-[10.5px] text-muted">
+                            {item.masked
+                              ? 'تظهر البيانات الدراسية بعد موافقة الطالب على طلب الارتباط.'
+                              : `${item.stage || 'مرحلة غير محددة'} · ${item.grade || 'صف غير محدد'}`}
+                          </p>
+                        </div>
+                        {item.requestStatus === 'Accepted' ? (
+                          <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald"><CheckCircle2 size={12} />مرتبط بك</span>
+                        ) : item.requestStatus === 'Pending' ? (
+                          <span className="text-[10.5px] font-bold text-warning">بانتظار موافقة الطالب</span>
+                        ) : (
+                          <Button size="xs" icon={Send} loading={requestBusy === item.studentId} onClick={() => sendLinkRequest(item)}>
+                            {item.requestStatus === 'Rejected' || item.requestStatus === 'Unlinked' ? 'إعادة إرسال الطلب' : 'إرسال طلب ارتباط'}
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <p className="text-[10px] leading-5 text-subtle">لن يظهر الطالب في قائمتك ولن تصل إلى بياناته التفصيلية إلا بعد موافقته على طلب الارتباط.</p>
+                </div>
+              ) : (
+                <div className="mt-3">
+                  <Alert tone="info" title="لا يوجد حساب بهذا الرقم">{lookupResult.message}</Alert>
+                  <Button size="sm" variant="secondary" icon={Ticket} className="mt-2" onClick={() => switchToInvite(lookupPhone)}>إنشاء دعوة لطالب جديد</Button>
+                </div>
+              )
+            ) : null}
+          </div>
+        ) : (
+          <div>
+            <form onSubmit={submitInvite} className="grid gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="اسم الطالب" id="invite-name">
+                  <Input id="invite-name" maxLength={120} value={inviteForm.fullName} onChange={updateInvite('fullName')} placeholder="مثال: سارة أحمد" />
+                </Field>
+                <Field label="رقم هاتف الطالب" id="invite-student-phone" hint="لا يمكن أن يوجد حساب آخر به.">
+                  <Input id="invite-student-phone" dir="ltr" inputMode="tel" maxLength={20} value={inviteForm.studentPhone} onChange={updateInvite('studentPhone')} className="text-left" placeholder="01xxxxxxxxx" />
+                </Field>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="رقم هاتف ولي الأمر" id="invite-parent-phone" hint="قد يتشاركه الإخوة.">
+                  <Input id="invite-parent-phone" dir="ltr" inputMode="tel" maxLength={20} value={inviteForm.parentPhone} onChange={updateInvite('parentPhone')} className="text-left" placeholder="01xxxxxxxxx" />
+                </Field>
+                <Field label="اسم ولي الأمر" id="invite-parent-name">
+                  <Input id="invite-parent-name" maxLength={200} value={inviteForm.parentName} onChange={updateInvite('parentName')} placeholder="مثال: أحمد محمد علي" />
+                </Field>
+                <div className="grid grid-cols-2 gap-2 sm:col-span-2">
+                  <Field label="المرحلة" id="invite-stage">
+                    <Select id="invite-stage" value={inviteForm.stage} onChange={updateInviteStage}>
+                      <option value="">اختر</option>
+                      {EDUCATION_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="الصف" id="invite-grade">
+                    <Select id="invite-grade" value={inviteForm.grade} onChange={updateInvite('grade')} disabled={!inviteForm.stage}>
+                      <option value="">{inviteForm.stage ? 'اختر' : 'المرحلة أولاً'}</option>
+                      {gradesForStage(inviteForm.stage).map((grade) => <option key={grade} value={grade}>{grade}</option>)}
+                    </Select>
+                  </Field>
+                </div>
+              </div>
+              {inviteError ? <Alert tone="danger">{inviteError}</Alert> : null}
+              {inviteResult ? (
+                <div className="rounded-[12px] border border-emerald/25 bg-emerald-soft p-3">
+                  <p className="flex items-center gap-1.5 text-[11.5px] font-bold text-emerald"><Link2 size={13} />تم إنشاء رابط الدعوة</p>
+                  <p className="mt-1 text-[10.5px] leading-5 text-muted">{inviteResult.message}</p>
+                  <div className="mt-2"><CopyChip value={inviteResult.inviteUrl} label="نسخ رابط الدعوة" /></div>
+                </div>
+              ) : null}
+              <div className="flex flex-col gap-2 border-t border-line pt-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-[10px] leading-5 text-subtle">لا توجد خدمة رسائل تلقائية: أرسل الرابط للطالب عبر قناة تتوفر لك. الدعوة صالحة 14 يوماً ولا تنشئ حساباً مكرراً.</p>
+                <Button type="submit" size="sm" icon={Ticket} loading={inviteBusy}>إنشاء رابط الدعوة</Button>
+              </div>
+            </form>
+
+            <div className="mt-4 border-t border-line pt-3">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-[12px] font-bold text-ink">الدعوات الأخيرة</h3>
+                <Button variant="ghost" size="xs" icon={RefreshCw} loading={invitationsLoading} onClick={loadInvitations}>تحديث</Button>
+              </div>
+              {invitations.length === 0 ? (
+                <p className="rounded-[10px] bg-surface-soft p-3 text-center text-[11px] text-muted">لم ترسل دعوات بعد.</p>
+              ) : (
+                <div className="grid max-h-52 gap-2 overflow-y-auto">
+                  {invitations.slice(0, 8).map((invitation) => {
+                    const meta = invitationMeta[invitation.effectiveStatus] || { label: invitation.effectiveStatus, tone: 'neutral' };
+                    return (
+                      <div key={invitation.invitationId} className="rounded-[10px] border border-line bg-surface-soft p-2.5">
+                        <div className="flex flex-wrap items-center justify-between gap-1.5">
+                          <p className="truncate text-[11.5px] font-bold text-ink">{invitation.studentName}</p>
+                          <Badge tone={meta.tone}>{meta.label}</Badge>
+                        </div>
+                        <p className="mt-0.5 text-[10px] text-subtle" dir="ltr">{invitation.studentPhone}</p>
+                        {invitation.effectiveStatus === 'Pending' ? <div className="mt-1.5"><CopyChip value={invitation.inviteUrl} label="نسخ الرابط" /></div> : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={editOpen}
+        onClose={() => { if (!editBusy) { setEditOpen(false); setEditTarget(null); setEditError(''); } }}
+        title={editTarget ? `تعديل بيانات ${editTarget.fullName}` : 'تعديل بيانات الطالب'}
+        description="متاح فقط للطلاب المرتبطين بك ارتباطاً مقبولاً. تغيير المرحلة يحفظ السجل السابق ولا يعدّل المحاولات القديمة."
+        icon={Pencil}
+        size="lg"
+        footer={(
+          <>
+            <Button variant="secondary" size="sm" disabled={editBusy} onClick={() => { setEditOpen(false); setEditTarget(null); setEditError(''); }}>إلغاء</Button>
+            <Button size="sm" icon={ShieldCheck} loading={editBusy} disabled={editLoading} onClick={saveEdit}>حفظ بيانات الطالب</Button>
+          </>
+        )}
+      >
+        {editError ? <Alert tone="danger" className="mb-3">{editError}</Alert> : null}
+        {editLoading ? <Skeleton className="h-52 w-full" /> : (
+          <form onSubmit={saveEdit} className="grid gap-3" noValidate>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="الاسم الكامل" id="edit-name">
+                <Input id="edit-name" maxLength={120} value={editForm.fullName} onChange={updateEdit('fullName')} />
+              </Field>
+              <Field label="رقم هاتف الطالب" id="edit-student-phone">
+                <Input id="edit-student-phone" dir="ltr" inputMode="tel" maxLength={20} value={editForm.studentPhone} onChange={updateEdit('studentPhone')} className="text-left" />
+              </Field>
+            </div>
+            <Field label="اسم ولي الأمر" id="edit-parent-name" hint="يظهر في بيانات الطالب للمدرس المرتبط فقط.">
+              <Input id="edit-parent-name" maxLength={200} value={editForm.parentName} onChange={updateEdit('parentName')} placeholder="مثال: أحمد محمد علي" />
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="رقم هاتف ولي الأمر" id="edit-parent-phone">
+                <Input id="edit-parent-phone" dir="ltr" inputMode="tel" maxLength={20} value={editForm.parentPhone} onChange={updateEdit('parentPhone')} className="text-left" />
+              </Field>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="المرحلة" id="edit-stage">
+                  <Select id="edit-stage" value={editForm.stage} onChange={updateEditStage}>
+                    <option value="">اختر</option>
+                    {EDUCATION_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
+                  </Select>
+                </Field>
+                <Field label="الصف" id="edit-grade">
+                  <Select id="edit-grade" value={editForm.grade} onChange={updateEdit('grade')} disabled={!editForm.stage}>
+                    <option value="">{editForm.stage ? 'اختر' : 'المرحلة أولاً'}</option>
+                    {gradesForStage(editForm.stage).map((grade) => <option key={grade} value={grade}>{grade}</option>)}
+                  </Select>
+                </Field>
+              </div>
+            </div>
+
+            <Alert tone="warning" title="السجل الأكاديمي السابق محفوظ">
+              ستبقى محاولات الطالب السابقة ونتائجها كما هي بلقطات المرحلة والصف والسنة الدراسية وقت كل محاولة، ولن تتأثر بتعديل بياناته الآن.
+            </Alert>
+
+            <div className="rounded-[12px] border border-line bg-surface-soft p-3">
+              <div className="flex items-center gap-1.5 text-[11.5px] font-bold text-ink"><History size={13} className="text-primary" />السجل الأكاديمي السابق</div>
+              {editHistory?.history?.length ? (
+                <div className="mt-2 grid gap-2">
+                  {editHistory.history.map((group) => (
+                    <div key={`${group.academicYear}-${group.stage}-${group.grade}`} className="rounded-[9px] border border-line bg-surface p-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-1">
+                        <p className="text-[11px] font-bold text-ink">{group.stage || 'مرحلة غير محددة'} · {group.grade || 'صف غير محدد'}</p>
+                        <Badge tone="primary">{group.academicYear || 'سنة غير محددة'}</Badge>
+                      </div>
+                      <p className="mt-0.5 text-[10px] text-muted">{formatNumber(group.attemptsCount)} محاولة سابقة</p>
+                      <div className="mt-1 grid gap-0.5">
+                        {(group.items || []).slice(0, 2).map((item) => (
+                          <p key={item.id} className="flex items-center justify-between gap-2 text-[10px] text-muted"><span className="truncate">{item.examTitle}</span><span className="ui-number shrink-0">{item.resultsAvailable ? `${formatNumber(item.score)} / ${formatNumber(item.maxScore)}` : 'غير متاحة'}</span></p>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="mt-1 text-[10.5px] text-muted">لا توجد محاولات سابقة مسجلة.</p>}
+              {editHistory?.changes?.length ? (
+                <div className="mt-2 border-t border-line pt-2">
+                  <p className="text-[10.5px] font-bold text-muted">تغييرات المرحلة والصف</p>
+                  <div className="mt-1 grid gap-1">
+                    {editHistory.changes.slice(0, 4).map((change) => (
+                      <p key={change.id} className="text-[10px] leading-5 text-subtle">
+                        {formatDate(change.changedAtUtc)}: {change.previousStage || '—'} / {change.previousGrade || '—'} ← {change.newStage || '—'} / {change.newGrade || '—'}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </form>
+        )}
       </Modal>
     </div>
   );

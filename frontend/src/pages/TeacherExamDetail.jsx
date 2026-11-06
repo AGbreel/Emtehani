@@ -29,13 +29,14 @@ import {
   LiveDot,
   Modal,
   PageHeader,
+  Select,
   Skeleton,
   StatusChip,
   TableSkeleton,
   cn,
 } from '../components/ui';
 import { request } from '../lib/api';
-import { downloadBlob, formatDate, formatDuration, formatNumber, formatTimer, scoreText } from '../lib/format';
+import { downloadBlob, formatDate, formatDuration, formatNumber, formatTimer, scoreText, cairoInputToUtcIso, toCairoInputValue } from '../lib/format';
 
 const statusOrder = ['Active', 'Waiting', 'Disconnected', 'Invited', 'Submitted', 'Absent'];
 
@@ -54,13 +55,10 @@ export default function TeacherExamDetail({ token, exam: initialExam, onBack, on
   const [tick, setTick] = useState(0);
   const [availableFrom, setAvailableFrom] = useState('');
   const [availableUntil, setAvailableUntil] = useState('');
+  const [resultsReleaseMode, setResultsReleaseMode] = useState('');
 
   function toLocalInput(value) {
-    if (!value) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    return toCairoInputValue(value);
   }
 
   const load = useCallback(async (background = false) => {
@@ -91,7 +89,7 @@ export default function TeacherExamDetail({ token, exam: initialExam, onBack, on
     if (!initialExam?.id) return;
     let active = true;
     request(`/api/exams/${initialExam.id}`, { token })
-      .then((meta) => { if (active) { setExam((current) => ({ ...current, ...meta, status: current.status === 'Active' || current.status === 'Paused' ? current.status : meta.status })); setAvailableFrom(toLocalInput(meta.availableFromUtc)); setAvailableUntil(toLocalInput(meta.availableUntilUtc)); } })
+      .then((meta) => { if (active) { setExam((current) => ({ ...current, ...meta, status: current.status === 'Active' || current.status === 'Paused' ? current.status : meta.status })); setAvailableFrom(toLocalInput(meta.availableFromUtc)); setAvailableUntil(toLocalInput(meta.availableUntilUtc)); setResultsReleaseMode(meta.resultsReleaseMode || ''); } })
       .catch(() => {});
     return () => { active = false; };
   }, [token, initialExam?.id]);
@@ -180,12 +178,13 @@ export default function TeacherExamDetail({ token, exam: initialExam, onBack, on
         token,
         method: 'PUT',
         body: JSON.stringify({
-          availableFromUtc: availableFrom ? new Date(availableFrom).toISOString() : null,
-          availableUntilUtc: availableUntil ? new Date(availableUntil).toISOString() : null,
+          availableFromUtc: cairoInputToUtcIso(availableFrom),
+          availableUntilUtc: cairoInputToUtcIso(availableUntil),
+          resultsReleaseMode: resultsReleaseMode || null,
         }),
       });
-      setExam((current) => ({ ...current, availableFromUtc: result.availableFromUtc, availableUntilUtc: result.availableUntilUtc }));
-      setNotice('تم تحديث فترة إتاحة الامتحان.');
+      setExam((current) => ({ ...current, availableFromUtc: result.availableFromUtc, availableUntilUtc: result.availableUntilUtc, resultsReleaseMode: result.resultsReleaseMode }));
+      setNotice('تم تحديث إعدادات الإتاحة وإظهار النتائج.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -244,7 +243,7 @@ export default function TeacherExamDetail({ token, exam: initialExam, onBack, on
       {error ? <Alert tone="danger" className="mb-4" onClose={() => setError('')}>{error}</Alert> : null}
       {notice ? <Alert tone="success" className="mb-4" onClose={() => setNotice('')}>{notice}</Alert> : null}
 
-      <div className="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <div className="ui-stagger mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Card className="p-3.5 sm:p-4">
           <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-[11.5px] font-bold text-muted">حالة الجلسة</span><StatusChip status={exam.status} /></div>
           <div className="mt-3 flex items-center gap-2">
@@ -271,14 +270,21 @@ export default function TeacherExamDetail({ token, exam: initialExam, onBack, on
       <Card className="mb-4 p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
           <div className="grid flex-1 gap-3 sm:grid-cols-2">
-            <Field label="فترة الإتاحة من" id="detail-available-from" hint="اختياري. لا يمكن بدء محاولة جديدة قبل هذا الوقت.">
+            <Field label="فترة الإتاحة من" id="detail-available-from" hint="اختياري. تُعرض الأوقات بتوقيت مصر (Africa/Cairo).">
               <Input id="detail-available-from" type="datetime-local" value={availableFrom} onChange={(event) => setAvailableFrom(event.target.value)} />
             </Field>
             <Field label="فترة الإتاحة إلى" id="detail-available-until" hint="تنتهي محاولة الطالب عند هذا الوقت حتى لو بقي من المدة.">
               <Input id="detail-available-until" type="datetime-local" value={availableUntil} onChange={(event) => setAvailableUntil(event.target.value)} />
             </Field>
+            <Field label="موعد إظهار النتائج" id="detail-results-release" hint="لا تُنشر النتائج قبل اكتمال التصحيح اليدوي للمقالي." className="sm:col-span-2">
+              <Select id="detail-results-release" value={resultsReleaseMode} onChange={(event) => setResultsReleaseMode(event.target.value)}>
+                <option value="">نشر يدوي (الوضع القديم)</option>
+                <option value="AfterSubmission">بعد انتهاء الطالب من الامتحان</option>
+                <option value="AfterExamEnd">بعد انتهاء وقت الامتحان بالكامل</option>
+              </Select>
+            </Field>
           </div>
-          <Button size="sm" icon={Save} loading={busy === 'availability'} onClick={saveAvailability}>حفظ فترة الإتاحة</Button>
+          <Button size="sm" icon={Save} loading={busy === 'availability'} onClick={saveAvailability}>حفظ إعدادات الإتاحة والنتائج</Button>
         </div>
       </Card>
 

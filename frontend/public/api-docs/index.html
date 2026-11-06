@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>توثيق API — امتحاني</title>
+  <meta name="description" content="توثيق واجهة برمجة تطبيقات امتحاني: المصادقة، الحدود، نقاط النهاية العامة، والوصول إلى البيانات الخاصة.">
+  <link rel="canonical" href="https://emtehani.vercel.app/api-docs/">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f7f7f4;
+      --surface: #ffffff;
+      --ink: #14161c;
+      --muted: #5d6472;
+      --line: #e3e3dc;
+      --primary: #3757d6;
+      --primary-soft: #eef1ff;
+      --code-bg: #121725;
+      --code-ink: #e8ecff;
+      --radius: 16px;
+      --max: 980px;
+      font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b0e16;
+        --surface: #121722;
+        --ink: #f1f3f9;
+        --muted: #a2aab9;
+        --line: #252c3a;
+        --primary: #8ea2ff;
+        --primary-soft: #1a2236;
+        --code-bg: #080b12;
+        --code-ink: #dfe6ff;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); line-height: 1.75; }
+    a { color: var(--primary); text-underline-offset: 3px; }
+    header.hero {
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, var(--primary-soft), transparent);
+      padding: 2.5rem 1.25rem 2rem;
+    }
+    .wrap { max-width: var(--max); margin: 0 auto; }
+    .eyebrow { display: inline-block; font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--primary); }
+    h1 { margin: .4rem 0 .5rem; font-size: clamp(1.7rem, 4vw, 2.5rem); line-height: 1.25; }
+    .lede { margin: 0; max-width: 62ch; color: var(--muted); font-size: 1.02rem; }
+    .meta { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1.1rem; }
+    .chip { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: .28rem .7rem; font-size: .78rem; color: var(--muted); }
+    main { padding: 2rem 1.25rem 4rem; }
+    section { margin: 0 0 2.2rem; }
+    h2 { font-size: 1.25rem; margin: 0 0 .7rem; }
+    h3 { font-size: 1rem; margin: 1.4rem 0 .5rem; }
+    p, li { color: var(--muted); }
+    ul { padding-inline-start: 1.2rem; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.1rem 1.2rem; }
+    .grid { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+    .card h3 { margin-top: 0; color: var(--ink); }
+    .card p { margin: 0; font-size: .9rem; }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; direction: ltr; unicode-bidi: embed; }
+    code { background: var(--primary-soft); border-radius: 6px; padding: .1rem .35rem; font-size: .86em; }
+    pre { background: var(--code-bg); color: var(--code-ink); padding: 1rem 1.1rem; border-radius: 12px; overflow-x: auto; font-size: .84rem; line-height: 1.6; }
+    table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    th, td { border-bottom: 1px solid var(--line); padding: .6rem .5rem; text-align: right; vertical-align: top; }
+    th { color: var(--ink); font-size: .8rem; }
+    td code { white-space: nowrap; }
+    .note { border-inline-start: 3px solid var(--primary); background: var(--primary-soft); border-radius: 10px; padding: .8rem 1rem; font-size: .9rem; color: var(--ink); }
+    .warning { border-inline-start-color: #c2410c; }
+    footer { border-top: 1px solid var(--line); padding: 1.5rem 1.25rem; color: var(--muted); font-size: .84rem; }
+    .links { display: flex; flex-wrap: wrap; gap: .6rem 1.1rem; padding: 0; list-style: none; }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <span class="eyebrow">Emtehani API · v1</span>
+      <h1>توثيق واجهة برمجة التطبيقات</h1>
+      <p class="lede">واجهة REST لمصادقة المستخدمين وإدارة الامتحانات والجلسات والنتائج. كل نقاط النهاية المحمية تتطلب رمز وصول JWT صادراً من المنصة، وتُفرض الصلاحيات في الخادم.</p>
+      <div class="meta">
+        <span class="chip">Base URL: https://emtehani.runasp.net</span>
+        <span class="chip">JSON / UTF-8</span>
+        <span class="chip">JWT Bearer</span>
+        <span class="chip">Rate limited</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section>
+      <h2>البدء السريع</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>1. الحالة</h3>
+          <p>تحقق من توفر الخدمة عبر <code>GET /health</code>. الاستجابة الناجحة هي <code>200 Healthy</code>.</p>
+        </div>
+        <div class="card">
+          <h3>2. تسجيل الدخول</h3>
+          <p>أرسل البريد وكلمة المرور إلى <code>POST /api/auth/login</code> للحصول على رمز وصول ورمز تجديد.</p>
+        </div>
+        <div class="card">
+          <h3>3. استدعاء API</h3>
+          <p>أضف <code>Authorization: Bearer &lt;token&gt;</code> إلى كل طلب محمي. لا تضع الرمز في الرابط.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>المصادقة</h2>
+      <p>تسجيل الدخول متاح للطلاب والمدرسين عبر البريد الإلكتروني وكلمة المرور. رمز الوصول JWT صالح لمدة 8 ساعات، ورمز التجديد صالح لمدة 30 يوماً ويُدوَّر عند كل استخدام. لا توجد حالياً خدمة OAuth 2.0 / OpenID Connect ولا تسجيل عملاء ديناميكي.</p>
+      <pre>POST /api/auth/login
+Content-Type: application/json
+
+{ "email": "you@your-domain.com", "password": "********" }
+
+200 OK
+{ "token": "&lt;jwt&gt;", "refreshToken": "&lt;opaque&gt;", "expiresAtUtc": "2026-10-30T18:00:00Z", "role": "Student" }</pre>
+      <pre>GET /api/exams?page=1&amp;pageSize=10
+Authorization: Bearer &lt;jwt&gt;</pre>
+      <div class="note">لا ترسل كلمة المرور إلى أي طرف ثالث، ولا تحاول أتمتة تسجيل الدخول باستخدام كلمات مرور محفوظة. لا يوجد حالياً تفويض للوكلاء أو تدفق client-credentials.</div>
+      <ul>
+        <li><a href="/auth.md">دليل المصادقة والصلاحيات الكامل</a></li>
+        <li><a href="https://emtehani.runasp.net/swagger/v1/swagger.json">OpenAPI Specification</a></li>
+        <li><a href="/.well-known/api-catalog">API Catalog (RFC 9727)</a></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>نقاط النهاية العامة</h2>
+      <table>
+        <thead><tr><th>Method</th><th>Path</th><th>الوصف</th></tr></thead>
+        <tbody>
+          <tr><td><code>GET</code></td><td><code>/health</code></td><td>فحص صحة الخدمة وقاعدة البيانات.</td></tr>
+          <tr><td><code>GET</code></td><td><code>/api</code></td><td>اسم الخدمة والإصدار.</td></tr>
+          <tr><td><code>POST</code></td><td><code>/api/auth/register</code></td><td>إنشاء حساب طالب أو مدرس (بشري، مع تأكيد البريد).</td></tr>
+          <tr><td><code>POST</code></td><td><code>/api/auth/login</code></td><td>إصدار رمز وصول ورمز تجديد.</td></tr>
+          <tr><td><code>POST</code></td><td><code>/api/auth/refresh</code></td><td>تدوير رمز التجديد وإصدار رمز وصول جديد.</td></tr>
+          <tr><td><code>POST</code></td><td><code>/api/auth/logout</code></td><td>إبطال رمز التجديد الحالي.</td></tr>
+          <tr><td><code>GET</code></td><td><code>/api/auth/verify-email</code></td><td>تأكيد البريد عبر رمز لمرة واحدة.</td></tr>
+          <tr><td><code>POST</code></td><td><code>/api/auth/forgot-password</code></td><td>طلب رابط إعادة تعيين كلمة المرور.</td></tr>
+          <tr><td><code>POST</code></td><td><code>/api/auth/reset-password</code></td><td>تعيين كلمة مرور جديدة برمز صالح.</td></tr>
+        </tbody>
+      </table>
+      <div class="note">نقاط النهاية المحمية تشمل <code>/api/auth/me</code>، <code>/api/exams</code>، الجلسات، المشاركين، التسليمات، المراجعة، النتائج، وإدارة الطلاب. راجع OpenAPI للعقد الكامل. لا تُنشر بيانات الطلاب أو المدرسين أو الامتحانات عبر أي مورد عام.</div>
+    </section>
+
+    <section>
+      <h2>الحدود والأخطاء</h2>
+      <div class="grid">
+        <div class="card"><h3>حدود المعدل</h3><p><code>120</code> طلباً/دقيقة لواجهات API، و<code>60</code> طلباً/دقيقة لمسارات المصادقة، و<code>10</code> محاولات/دقيقة لكل مستخدم لإدخال الأكواد. الاستجابة <code>429</code> تتضمن <code>Retry-After</code>.</p></div>
+        <div class="card"><h3>صيغة الخطأ</h3><p>أخطاء API بصيغة <code>application/problem+json</code> مع <code>title</code> و<code>status</code> و<code>traceId</code>. لا تُعاد تفاصيل داخلية أو أسرار.</p></div>
+        <div class="card"><h3>CORS</h3><p>مسموح فقط لأصل الواجهة المحدد في بيئة الخادم (<code>FrontendOrigin</code>). لا تُستخدم نطاقات مفتوحة (<code>*</code>) لواجهات API.</p></div>
+        <div class="card"><h3>الحجم والوقت</h3><p>الحد الأقصى لحجم الطلب 2 ميجابايت. استخدم <code>GET</code> مع الاستعلامات المرقّمة (<code>page</code>, <code>pageSize</code>) للقوائم الكبيرة.</p></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>الخصوصية والوصول</h2>
+      <ul>
+        <li>كل طلب محمي يُشتق منه هوية المستخدم من JWT مُتحقق منه؛ لا تُقبل هوية من جسم الطلب.</li>
+        <li>المدرس لا يصل إلا إلى امتحاناته والطلاب المرتبطين به. الطالب لا يصل إلا إلى محاولاته ونتائجه المفرج عنها.</li>
+        <li>بيانات الطلاب والمدرسين والامتحانات والإجابات والنتائج ليست محتوى عاماً ولا تُدرج في Sitemap أو ملفات Discovery.</li>
+        <li>لا توجد مفاتيح API أو رموز تجديد أو أسرار في أي ملف ثابت أو مستودع.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>موارد الاكتشاف</h2>
+      <ul class="links">
+        <li><a href="/.well-known/api-catalog">API Catalog</a></li>
+        <li><a href="/.well-known/ai-catalog.json">AI Catalog (ARD)</a></li>
+        <li><a href="/.well-known/mcp/server-card.json">MCP Server Card</a></li>
+        <li><a href="/.well-known/agent-skills/index.json">Agent Skills</a></li>
+        <li><a href="/auth.md">auth.md</a></li>
+        <li><a href="/agent.md">agent.md</a></li>
+        <li><a href="/llms.txt">llms.txt</a></li>
+        <li><a href="/robots.txt">robots.txt</a></li>
+        <li><a href="/sitemap.xml">sitemap.xml</a></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">امتحاني · Emtehani — توثيق عام لواجهة API. للتواصل: ahmedgbreel47@gmail.com</div>
+  </footer>
+</body>
+</html>

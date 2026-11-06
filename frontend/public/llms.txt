@@ -1,0 +1,35 @@
+# Emtehani — llms.txt
+
+> Arabic-first school exam platform for teachers and students. Public pages and
+> documentation only; learner/teacher records and exam content are private.
+
+## Canonical
+
+- [Home](https://emtehani.vercel.app/): platform overview, features, workflow, FAQ.
+- [Markdown home](https://emtehani.vercel.app/agent.md): Markdown representation of the home page.
+- [API documentation](https://emtehani.vercel.app/api-docs/): public API onboarding, authentication, rate limits.
+- [Authentication guide](https://emtehani.vercel.app/auth.md): JWT bearer model, roles, access limits, OAuth gap.
+
+## API
+
+- [API catalog](https://emtehani.vercel.app/.well-known/api-catalog): RFC 9727 linkset.
+- [OpenAPI specification](https://emtehani.runasp.net/swagger/v1/swagger.json): generated OpenAPI document.
+- [Health](https://emtehani.runasp.net/health): service status.
+
+## Agent discovery
+
+- [AI catalog / ARD manifest](https://emtehani.vercel.app/.well-known/ai-catalog.json)
+- [ARD manifest alias](https://emtehani.vercel.app/.well-known/ard.json)
+- [MCP server card](https://emtehani.vercel.app/.well-known/mcp/server-card.json)
+- [Agent Skills index](https://emtehani.vercel.app/.well-known/agent-skills/index.json)
+
+## Policy
+
+- Public marketing and documentation may be indexed and cited.
+- AI training on Emtehani content is not permitted (`ai-train=no`).
+- Student, teacher, exam, answer, and result data are private and excluded from all discovery documents.
+- No OAuth/OIDC authorization server or dynamic client registration is available.
+
+## Contact
+
+ahmedgbreel47@gmail.com

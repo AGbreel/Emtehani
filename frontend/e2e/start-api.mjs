@@ -21,6 +21,8 @@ const env = {
   FrontendOrigin: process.env.E2E_FRONTEND_ORIGIN || 'http://127.0.0.1:4173',
   PublicApiUrl: process.env.E2E_PUBLIC_API_URL || `http://127.0.0.1:${port}`,
   Auth__AutoConfirmWithoutSmtp: 'true',
+  Admin__BootstrapEmail: process.env.E2E_ADMIN_EMAIL || 'admin-e2e@example.test',
+  Admin__BootstrapPassword: process.env.E2E_ADMIN_PASSWORD || 'AdminE2e!2026',
   Email__SmtpHost: '',
   Email__Username: '',
   Email__Password: '',

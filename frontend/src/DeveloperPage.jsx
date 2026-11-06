@@ -1,10 +1,301 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowUpRight, ExternalLink,
-  GitBranch, Link2, Mail, Menu, MessageCircle, Moon, Phone, Sun, X,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  ArrowUpRight,
+  BriefcaseBusiness,
+  Code2,
+  ExternalLink,
+  GitBranch,
+  Link2,
+  Mail,
+  Menu,
+  MessageCircle,
+  Moon,
+  Phone,
+  Rocket,
+  Sun,
+  Workflow,
+  X,
 } from "lucide-react";
-import { PROFILE, IMAGES, STACK, PROJECTS, SERVICES, STEPS, COPY } from "./developerData.js";
 import "./DeveloperPage.css";
+
+const PROFILE = {
+  name: "Ahmed Gbreel",
+  role: "Full Stack Developer & Software Engineer",
+  degree: "بكالوريوس الحاسبات والذكاء الاصطناعي، جامعة بنها",
+  graduation: "2025",
+  location: "القاهرة، مصر",
+  email: "ahmedgbreel47@gmail.com",
+  phone: "01159862510",
+  whatsapp: "201159862510",
+  github: "https://github.com/AGbreel",
+  linkedin: "https://www.linkedin.com/in/ahmed-gbreel-8465b0352/",
+};
+
+const IMAGES = {
+  hero: "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=1400&q=85",
+  about: "https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=1200&q=85",
+  exam: "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&w=1400&q=85",
+  ecommerce: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=1200&q=85",
+  portfolio: "https://images.unsplash.com/photo-1461749280684-dccba630e2f6?auto=format&fit=crop&w=1400&q=85",
+};
+
+const STACK = [
+  { name: "React", slug: "react" },
+  { name: "JavaScript", slug: "javascript" },
+  { name: "ASP.NET Core", slug: "dotnet" },
+  { name: "Vite", slug: "vite" },
+  { name: "OpenAPI", slug: "openapiinitiative" },
+];
+
+const PROJECTS = [
+  {
+    key: "exam",
+    title: "Exam Platform",
+    layout: "featured",
+    image: IMAGES.exam,
+    tags: ["React", "ASP.NET Core", "SQL Server"],
+    category: { ar: "منصة تعليمية", en: "Education platform" },
+    description: {
+      ar: "منصة لإدارة الاختبارات، إنشاء الأسئلة، تنظيم المحاولات، ومتابعة النتائج في تجربة استخدام واضحة.",
+      en: "An exam platform for creating questions, managing attempts, and reviewing results in a clear workflow.",
+    },
+    alt: {
+      ar: "طاولة دراسة عليها كتب ودفاتر.",
+      en: "A study desk with books and notebooks.",
+    },
+  },
+  {
+    key: "ecommerce",
+    title: "E-commerce",
+    layout: "standard",
+    image: IMAGES.ecommerce,
+    tags: ["React", "REST APIs", "SQL Server"],
+    category: { ar: "تجارة إلكترونية", en: "E-commerce" },
+    description: {
+      ar: "متجر إلكتروني قابل للتوسع لعرض المنتجات وتنظيم تجربة التسوق وإدارة الوظائف الأساسية للمتجر.",
+      en: "A scalable storefront for presenting products, organizing the shopping experience, and managing core store operations.",
+    },
+    alt: {
+      ar: "متجر ملابس تعرض فيه الملابس على علاقات.",
+      en: "A clothing store with garments on racks.",
+    },
+  },
+  {
+    key: "erp",
+    title: "Educational Center ERP",
+    layout: "standard",
+    cover: "ERP",
+    tags: ["ASP.NET Core", "C#", "SQL Server"],
+    category: { ar: "إدارة مركز تعليمي", en: "Education operations" },
+    description: {
+      ar: "نظام لإدارة عمليات مركز تعليمي، مع وحدات قابلة للتطوير تناسب احتياجات العمل.",
+      en: "A system for running an educational center, with modules that can grow with the business.",
+    },
+  },
+  {
+    key: "portfolio",
+    title: "Portfolio",
+    layout: "wide",
+    image: IMAGES.portfolio,
+    tags: ["React", "Responsive UI", "UI/UX"],
+    category: { ar: "موقع شخصي", en: "Personal site" },
+    description: {
+      ar: "موقع شخصي يعرض المهارات والمشاريع والخدمات ووسائل التواصل بشكل متجاوب.",
+      en: "A responsive portfolio for presenting skills, projects, services, and contact channels.",
+    },
+    alt: {
+      ar: "شاشة تعرض أسطراً من كود برمجي.",
+      en: "A screen displaying lines of code.",
+    },
+  },
+];
+
+const SERVICES = [
+  {
+    icon: Code2,
+    title: { ar: "تطوير مواقع الويب", en: "Web development" },
+    description: {
+      ar: "مواقع حديثة وسريعة ومتجاوبة مع الموبايل والكمبيوتر، بتجربة استخدام واضحة.",
+      en: "Modern, fast, responsive websites with a clear user experience.",
+    },
+  },
+  {
+    icon: Workflow,
+    title: { ar: "أنظمة إدارية مخصصة", en: "Custom admin systems" },
+    description: {
+      ar: "لوحات تحكم وأنظمة لإدارة العمليات والبيانات بما يناسب طبيعة مشروعك.",
+      en: "Dashboards and systems for managing operations and data around your workflow.",
+    },
+  },
+  {
+    icon: BriefcaseBusiness,
+    title: { ar: "متاجر إلكترونية", en: "E-commerce" },
+    description: {
+      ar: "بناء متاجر قابلة للتوسع وتنظيم المنتجات والواجهات وتكاملات الـ API حسب المتطلبات.",
+      en: "Scalable stores with product management, storefronts, and API integrations.",
+    },
+  },
+  {
+    icon: Rocket,
+    title: { ar: "Back-end وواجهات API", en: "Back-end and APIs" },
+    description: {
+      ar: "تطوير خدمات خلفية منظمة باستخدام ASP.NET Core وSQL Server مع الاهتمام بقابلية الصيانة.",
+      en: "Organized services with ASP.NET Core and SQL Server, built for maintainability.",
+    },
+  },
+];
+
+const STEPS = [
+  {
+    title: { ar: "نفهم الفكرة", en: "Understand" },
+    description: {
+      ar: "نحدد أهداف المشروع والمستخدمين والوظائف المطلوبة.",
+      en: "Define goals, users, and the features your project needs.",
+    },
+  },
+  {
+    title: { ar: "نخطط ونصمم", en: "Plan and design" },
+    description: {
+      ar: "نرتب الأولويات ونحدد تجربة الاستخدام والبنية التقنية.",
+      en: "Prioritize features and map the user experience and architecture.",
+    },
+  },
+  {
+    title: { ar: "نطور ونختبر", en: "Build and test" },
+    description: {
+      ar: "نبني الحل على مراحل ونراجع الوظائف قبل التسليم.",
+      en: "Develop in stages and validate functionality before delivery.",
+    },
+  },
+  {
+    title: { ar: "نسلم وندعم", en: "Deliver and support" },
+    description: {
+      ar: "نسلم المشروع مع توضيح طريقة التشغيل والخطوات التالية.",
+      en: "Hand over the project with setup guidance and next steps.",
+    },
+  },
+];
+
+const COPY = {
+  ar: {
+    navAbout: "نبذة",
+    navWork: "المشاريع",
+    navServices: "الخدمات",
+    navContact: "تواصل",
+    primaryCta: "ناقش مشروعك",
+    secondaryCta: "شاهد الأعمال",
+    headlineA: "أبني منتجات",
+    headlineB: "رقمية تعمل.",
+    intro: "مطور Full Stack من القاهرة. أبني تطبيقات ويب واضحة، سريعة، وقابلة للتطوير، من الواجهة إلى قاعدة البيانات.",
+    heroAlt: "مكتب مطور بحاسوب مفتوح على محرر أكواد.",
+    heroCaption: "من مساحة العمل.",
+    stackLabel: "أدوات أعمل بها",
+    aboutTitle: "أفهم المشكلة قبل أن أكتب الكود.",
+    aboutText: "خريج كلية الحاسبات والذكاء الاصطناعي بجامعة بنها عام 2025، وأعمل في تطوير البرمجيات منذ سنتين. أبدأ بفهم احتياج المشروع، ثم أبني حلاً واضحاً يمكن تشغيله وصيانته مع نمو العمل.",
+    aboutAlt: "لابتوب مفتوح على محرر أكواد.",
+    aboutCaption: "تفاصيل من المكتب.",
+    facts: [
+      ["المؤهل", "بكالوريوس الحاسبات والذكاء الاصطناعي"],
+      ["التخرج", "2025"],
+      ["الموقع", "القاهرة، مصر"],
+      ["الإنجليزية", "متوسط"],
+    ],
+    workTitle: "مشاريع تحل مشكلات حقيقية.",
+    workText: "أعمال أبنيها بمنهج واضح: نطاق محدد، تجربة استخدام مفهومة، وكود يمكن تطويره.",
+    howTitle: "من أول مكالمة إلى الإطلاق.",
+    howText: "نطاق واضح، بناء قابل للصيانة، وتسليم يمكنك تشغيله بثقة.",
+    servicesHeading: "ما أقدمه",
+    processTitle: "طريقة العمل",
+    contactTitle: "لديك فكرة؟ لنبدأ.",
+    contactText: "أرسل تفاصيل المشروع، وسأعود إليك بخطة واضحة للنطاق والخطوات التالية.",
+    email: "البريد الإلكتروني",
+    whatsapp: "واتساب",
+    github: "GitHub",
+    linkedin: "LinkedIn",
+    phone: "الهاتف",
+    formName: "اسمك",
+    formEmail: "بريدك الإلكتروني",
+    formType: "نوع المشروع",
+    formBudget: "الميزانية التقريبية (اختياري)",
+    formDetails: "تفاصيل المشروع",
+    formSubmit: "أرسل عبر واتساب",
+    namePlaceholder: "اكتب اسمك",
+    emailPlaceholder: "name@example.com",
+    detailsPlaceholder: "ما الفكرة؟ وما أهم الوظائف التي تحتاجها؟",
+    selectProject: "اختر نوع المشروع",
+    website: "موقع تعريفي",
+    ecommerce: "متجر إلكتروني",
+    admin: "نظام إداري / ERP",
+    education: "منصة تعليمية",
+    api: "Back-end / API",
+    other: "مشروع آخر",
+    budgetPlaceholder: "مثال: قابل للنقاش",
+    formNote: "سيفتح واتساب برسالة جاهزة. لا يتم تخزين بياناتك في هذا الموقع.",
+    footer: "أحمد جبريل. جميع الحقوق محفوظة.",
+    top: "إلى الأعلى",
+  },
+  en: {
+    navAbout: "About",
+    navWork: "Work",
+    navServices: "Services",
+    navContact: "Contact",
+    primaryCta: "Discuss your project",
+    secondaryCta: "See the work",
+    headlineA: "I build digital",
+    headlineB: "products that work.",
+    intro: "Full Stack developer based in Cairo. I build clear, fast web applications that stay maintainable as they grow.",
+    heroAlt: "A developer desk with a laptop open on a code editor.",
+    heroCaption: "From the workspace.",
+    stackLabel: "Tools I work with",
+    aboutTitle: "I understand the problem before writing code.",
+    aboutText: "I graduated from the Faculty of Computers and Artificial Intelligence at Benha University in 2025 and have two years of software development experience. I start by understanding the business need, then build a clear solution that can run and scale with the work.",
+    aboutAlt: "A laptop open on a code editor.",
+    aboutCaption: "A detail from the desk.",
+    facts: [
+      ["Degree", "BSc in Computers and AI, Benha University"],
+      ["Graduation", "2025"],
+      ["Location", "Cairo, Egypt"],
+      ["English", "Intermediate"],
+    ],
+    workTitle: "Projects that solve real problems.",
+    workText: "Work built with a clear scope, a readable user experience, and code that can keep evolving.",
+    howTitle: "From the first call to launch.",
+    howText: "A clear scope, a maintainable build, and a handover you can run with confidence.",
+    servicesHeading: "What I do",
+    processTitle: "The process",
+    contactTitle: "Have an idea? Let's\u00a0start.",
+    contactText: "Send the project details and I'll reply with a clear scope and next steps.",
+    email: "Email",
+    whatsapp: "WhatsApp",
+    github: "GitHub",
+    linkedin: "LinkedIn",
+    phone: "Phone",
+    formName: "Your name",
+    formEmail: "Your email",
+    formType: "Project type",
+    formBudget: "Estimated budget (optional)",
+    formDetails: "Project details",
+    formSubmit: "Send via WhatsApp",
+    namePlaceholder: "Your name",
+    emailPlaceholder: "name@example.com",
+    detailsPlaceholder: "What is the idea, and which features matter most?",
+    selectProject: "Choose project type",
+    website: "Business website",
+    ecommerce: "E-commerce store",
+    admin: "Admin system / ERP",
+    education: "Education platform",
+    api: "Back-end / API",
+    other: "Other project",
+    budgetPlaceholder: "e.g. Open to discussion",
+    formNote: "WhatsApp will open with your details prefilled. This form does not store your data.",
+    footer: "Ahmed Gbreel. All rights reserved.",
+    top: "Back to top",
+  },
+};
 
 export default function DeveloperPage({ onBack, theme = "dark", onThemeChange }) {
   const [language, setLanguage] = useState("ar");
@@ -74,7 +365,7 @@ export default function DeveloperPage({ onBack, theme = "dark", onThemeChange })
       `Estimated budget: ${data.get("budget") || "Not specified"}`,
       `Project details: ${data.get("details") || "-"}`,
     ];
-    const message = `${PROFILE.inquiryGreeting}\n${fields.join("\n")}`;
+    const message = `Hello Ahmed, I'd like to discuss a project:\n${fields.join("\n")}`;
     window.open(`https://wa.me/${PROFILE.whatsapp}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
   }
 
@@ -93,11 +384,11 @@ export default function DeveloperPage({ onBack, theme = "dark", onThemeChange })
     >
       <header className="pf-nav">
         <div className="pf-nav-inner">
-          <a className="pf-brand" href="#portfolio-home" onClick={menuOpen ? closeMenu : undefined} aria-label={isArabic ? `${PROFILE.nameAr}، الصفحة الرئيسية` : `${PROFILE.name}, home`}>
-            <span className="pf-brand-mark" aria-hidden="true">{PROFILE.initials}</span>
+          <a className="pf-brand" href="#portfolio-home" onClick={menuOpen ? closeMenu : undefined} aria-label={isArabic ? "أحمد جبريل، الصفحة الرئيسية" : "Ahmed Gbreel, home"}>
+            <span className="pf-brand-mark" aria-hidden="true">AG</span>
             <span className="pf-brand-copy">
-              <strong>{isArabic ? PROFILE.nameAr : PROFILE.name}</strong>
-              <small>{PROFILE.shortRole}</small>
+              <strong>{isArabic ? "أحمد جبريل" : "Ahmed Gbreel"}</strong>
+              <small>Full Stack Developer</small>
             </span>
           </a>
 
@@ -161,7 +452,7 @@ export default function DeveloperPage({ onBack, theme = "dark", onThemeChange })
 
         <figure className="pf-hero-visual" data-reveal style={{ "--reveal-delay": "80ms" }}>
           <div className="pf-hero-frame">
-            <img className="translate-y-2" src={IMAGES.hero} alt={copy.heroAlt} loading="eager" fetchPriority="high" />
+            <img src={IMAGES.hero} alt={copy.heroAlt} loading="eager" fetchPriority="high" />
           </div>
           <figcaption>{copy.heroCaption}</figcaption>
         </figure>
@@ -287,12 +578,12 @@ export default function DeveloperPage({ onBack, theme = "dark", onThemeChange })
               </a>
               <a className="pf-contact-link" href={PROFILE.github} target="_blank" rel="noreferrer">
                 <GitBranch size={17} />
-                <span><small>{copy.github}</small><strong dir="ltr">{PROFILE.githubLabel}</strong></span>
+                <span><small>{copy.github}</small><strong dir="ltr">github.com/AGbreel</strong></span>
                 <ExternalLink size={14} />
               </a>
               <a className="pf-contact-link" href={PROFILE.linkedin} target="_blank" rel="noreferrer">
                 <Link2 size={17} />
-                <span><small>{copy.linkedin}</small><strong dir="ltr">{PROFILE.linkedinLabel}</strong></span>
+                <span><small>{copy.linkedin}</small><strong dir="ltr">linkedin.com/in/ahmed-gbreel</strong></span>
                 <ExternalLink size={14} />
               </a>
               <a className="pf-contact-link" href={`tel:${PROFILE.phone}`}>
@@ -343,8 +634,8 @@ export default function DeveloperPage({ onBack, theme = "dark", onThemeChange })
 
       <footer className="pf-footer">
         <a className="pf-footer-brand" href="#portfolio-home">
-          <span className="pf-footer-mark" aria-hidden="true">{PROFILE.initials}</span>
-          <span>{isArabic ? PROFILE.nameAr : PROFILE.name}</span>
+          <span className="pf-footer-mark" aria-hidden="true">AG</span>
+          <span>{isArabic ? "أحمد جبريل" : "Ahmed Gbreel"}</span>
         </a>
         <p>© {new Date().getFullYear()} {copy.footer}</p>
         <a href="#portfolio-home">{copy.top} <ArrowUp size={14} /></a>

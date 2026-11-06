@@ -89,7 +89,7 @@ export default function EssaysPage({ token, onOpenEssayReview, onOpenResults }) 
         </div>
       </Card>
 
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
+      <div className="ui-stagger mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
         <StatCard icon={PenLine} label="محاولات بحاجة لمراجعة" value={formatNumber(prepared.length)} note="تحتوي أسئلة مقالية" tone="warning" loading={loading} />
         <StatCard icon={FileText} label="مقالات بانتظار التصحيح" value={formatNumber(pendingTotal)} note="عبر جميع الطلاب" tone="primary" loading={loading} />
         <StatCard icon={ClipboardCheck} label="امتحان المادة" value={selected ? formatNumber(selected.questionCount) : '—'} note={selected?.title || 'لم يتم اختيار امتحان'} tone="blue" loading={loading} />

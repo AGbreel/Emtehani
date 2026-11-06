@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { useFocusTrap } from '../lib/useFocusTrap';
 import {
   AlertTriangle,
   BookOpen,
@@ -111,13 +112,28 @@ export function Card({ children, className = '', as = 'div', hover = false, ...p
     <Component
       {...props}
       className={cn(
-        'rounded-card border border-line bg-surface shadow-soft',
-        hover && 'transition duration-300 hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card',
+        'ui-rise-in rounded-card border border-line bg-surface shadow-soft',
+        hover && 'ui-card-lift transition duration-300 hover:-translate-y-0.5 hover:border-line-strong hover:shadow-card',
         className,
       )}
     >
       {children}
     </Component>
+  );
+}
+
+export function Reveal({ children, className = '', delay = 0, y = 18, once = true }) {
+  const reduce = useReducedMotion();
+  return (
+    <motion.div
+      className={className}
+      initial={reduce ? false : { opacity: 0, y }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once, margin: '-40px' }}
+      transition={{ duration: 0.5, delay, ease: [0.16, 1, 0.3, 1] }}
+    >
+      {children}
+    </motion.div>
   );
 }
 
@@ -221,7 +237,7 @@ export function Checkbox({ label, className = '', ...props }) {
 
 export function SectionHeading({ eyebrow, title, description, action, align = 'start', className = '' }) {
   return (
-    <div className={cn('flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between', align === 'center' && 'text-center sm:flex-col sm:items-center', className)}>
+    <div className={cn('ui-rise-in flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between', align === 'center' && 'text-center sm:flex-col sm:items-center', className)}>
       <div className={cn('max-w-2xl', align === 'center' && 'mx-auto')}>
         {eyebrow ? <div className="mb-2.5 inline-flex items-center gap-2 text-[11.5px] font-extrabold tracking-[0.14em] text-primary"><Sparkles size={13} />{eyebrow}</div> : null}
         <h2 className="font-display text-[clamp(1.55rem,3vw,2.35rem)] font-semibold leading-[1.3] tracking-[-0.04em] text-ink">{title}</h2>
@@ -234,7 +250,7 @@ export function SectionHeading({ eyebrow, title, description, action, align = 's
 
 export function PageHeader({ eyebrow, title, description, action, className = '' }) {
   return (
-    <div className={cn('mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between', className)}>
+    <div className={cn('ui-rise-in mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between', className)}>
       <div>
         {eyebrow ? <span className="mb-1.5 block text-[11.5px] font-extrabold tracking-[0.16em] text-primary">{eyebrow}</span> : null}
         <h1 className="font-display text-[clamp(1.55rem,3vw,2.1rem)] font-semibold leading-tight tracking-[-0.04em] text-ink">{title}</h1>
@@ -254,10 +270,10 @@ export function StatCard({ icon: Icon, label, value, note, tone = 'primary', cla
     danger: 'bg-danger-soft text-danger',
   };
   return (
-    <Card className={cn('group relative overflow-hidden p-4 sm:p-5', className)}>
+    <Card hover className={cn('group relative overflow-hidden p-4 sm:p-5', className)}>
       <div className="flex items-start justify-between gap-3">
         <span className="text-[12.5px] font-bold text-muted">{label}</span>
-        {Icon ? <span className={cn('grid size-9 place-items-center rounded-[11px]', toneClasses[tone])}><Icon size={18} strokeWidth={2.1} /></span> : null}
+        {Icon ? <span className={cn('grid size-9 place-items-center rounded-[11px] transition-transform duration-300 group-hover:-rotate-6 group-hover:scale-110', toneClasses[tone])}><Icon size={18} strokeWidth={2.1} /></span> : null}
       </div>
       {loading ? <div className="ui-shimmer mt-4 h-9 w-20 rounded-lg" /> : <strong className="ui-number mt-2 block font-display text-[2rem] font-semibold leading-tight text-ink">{value}</strong>}
       {note ? <p className="mt-1 text-[11.5px] leading-5 text-subtle">{note}</p> : null}
@@ -331,22 +347,10 @@ export function Alert({ tone = 'danger', title, children, onClose, className = '
 export function Modal({ open, onClose, title, description, icon: Icon = ShieldCheck, tone = 'primary', children, footer, size = 'md' }) {
   const reduce = useReducedMotion();
   const closeRef = useRef(null);
+  const dialogRef = useRef(null);
   const titleId = useId();
-
-  useEffect(() => {
-    if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    closeRef.current?.focus();
-    const onKeyDown = (event) => {
-      if (event.key === 'Escape') onClose?.();
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.body.style.overflow = previous;
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open, onClose]);
+  const descriptionId = useId();
+  useFocusTrap(open, dialogRef, onClose);
 
   const tones = {
     primary: 'bg-primary-soft text-primary',
@@ -358,27 +362,35 @@ export function Modal({ open, onClose, title, description, icon: Icon = ShieldCh
   return (
     <AnimatePresence>
       {open ? (
-        <motion.div className="fixed inset-0 z-[80] flex items-center justify-center bg-[rgba(3,7,18,.58)] p-4 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose?.(); }}>
+        <motion.div className="fixed inset-0 z-[80] flex items-end justify-center bg-[rgba(3,7,18,.58)] p-0 backdrop-blur-sm sm:items-center sm:p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose?.(); }}>
           <motion.div
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            className={cn('relative w-full overflow-hidden rounded-[24px] border border-line bg-surface p-5 shadow-[0_30px_100px_-20px_rgba(0,0,0,.45)] sm:p-6', size === 'lg' ? 'max-w-2xl' : size === 'sm' ? 'max-w-sm' : 'max-w-md')}
+            aria-describedby={description ? descriptionId : undefined}
+            tabIndex={-1}
+            className={cn(
+              'relative flex max-h-[calc(100dvh-0.75rem)] w-full flex-col overflow-hidden rounded-t-[24px] border border-line bg-surface shadow-[0_30px_100px_-20px_rgba(0,0,0,.45)] sm:max-h-[calc(100dvh-3rem)] sm:rounded-[24px]',
+              size === 'xl' ? 'max-w-3xl' : size === 'lg' ? 'max-w-2xl' : size === 'sm' ? 'max-w-sm' : 'max-w-md',
+            )}
             initial={reduce ? false : { opacity: 0, y: 18, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={reduce ? {} : { opacity: 0, y: 10, scale: 0.98 }}
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
           >
-            <button ref={closeRef} type="button" onClick={onClose} className="absolute left-4 top-4 grid size-8 place-items-center rounded-full text-muted transition hover:bg-surface-soft hover:text-ink" aria-label="إغلاق النافذة">
+            <button ref={closeRef} type="button" onClick={onClose} className="absolute left-4 top-4 z-10 grid size-8 place-items-center rounded-full text-muted transition hover:bg-surface-soft hover:text-ink" aria-label="إغلاق النافذة">
               <X size={17} />
             </button>
-            <div className={cn('mb-4 grid size-12 place-items-center rounded-[16px]', tones[tone])}>
-              <Icon size={23} />
+            <div className="shrink-0 px-5 pb-2 pt-5 sm:px-6 sm:pt-6">
+              <div className={cn('mb-4 grid size-12 place-items-center rounded-[16px]', tones[tone])}>
+                <Icon size={23} />
+              </div>
+              <h2 id={titleId} className="pe-8 font-display text-xl font-semibold tracking-[-0.03em] text-ink">{title}</h2>
+              {description ? <p id={descriptionId} className="mt-2 text-[13px] leading-6 text-muted">{description}</p> : null}
             </div>
-            <h2 id={titleId} className="font-display text-xl font-semibold tracking-[-0.03em] text-ink">{title}</h2>
-            {description ? <p className="mt-2 text-[13px] leading-6 text-muted">{description}</p> : null}
-            {children ? <div className="mt-5">{children}</div> : null}
-            {footer ? <div className="mt-6 flex flex-wrap justify-end gap-2">{footer}</div> : null}
+            {children ? <div className="ui-scrollbar-thin min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-1 sm:px-6">{children}</div> : null}
+            {footer ? <div className="shrink-0 border-t border-line bg-surface px-5 py-4 sm:px-6"><div className="flex flex-wrap justify-end gap-2">{footer}</div></div> : null}
           </motion.div>
         </motion.div>
       ) : null}

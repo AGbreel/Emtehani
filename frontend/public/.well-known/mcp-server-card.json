@@ -1,0 +1,94 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
+  "name": "emtehani.vercel.app/emtehani-mcp",
+  "version": "1.0.0",
+  "title": "Emtehani Public MCP Server",
+  "description": "Read-only public MCP server for Emtehani. Exposes platform information, the education stage/grade catalog, live service health, and public discovery links. It never exposes student, teacher, exam, answer, or result data.",
+  "serverInfo": {
+    "name": "emtehani-mcp",
+    "title": "Emtehani Public MCP Server",
+    "version": "1.0.0"
+  },
+  "transport": {
+    "type": "streamable-http",
+    "endpoint": "https://emtehani.runasp.net/mcp"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://emtehani.runasp.net/mcp"
+    }
+  ],
+  "protocolVersions": [
+    "2025-06-18",
+    "2025-03-26"
+  ],
+  "capabilities": {
+    "tools": {
+      "listChanged": false
+    }
+  },
+  "tools": [
+    {
+      "name": "get_platform_info",
+      "title": "Get platform information",
+      "description": "Return public information about Emtehani: what the platform does, who it serves, and canonical public URLs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list_education_catalog",
+      "title": "List education stages and grades",
+      "description": "Return the supported education stages and the grades belonging to each stage. This is static public catalog data, not student data.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get_service_health",
+      "title": "Get service health",
+      "description": "Run the Emtehani health checks, including database connectivity, and return the current status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get_discovery_links",
+      "title": "Get discovery links",
+      "description": "Return canonical links to the API catalog, OpenAPI specification, API documentation, authentication guide, AI catalog, and Agent Skills index.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ],
+  "authentication": {
+    "required": false,
+    "schemes": []
+  },
+  "provider": {
+    "name": "Emtehani",
+    "url": "https://emtehani.vercel.app/"
+  },
+  "websiteUrl": "https://emtehani.vercel.app/"
+}

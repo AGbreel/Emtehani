@@ -1,0 +1,83 @@
+{
+  "@context": "https://agenticresourcediscovery.org/context/v1",
+  "specVersion": "1.0",
+  "host": {
+    "displayName": "Emtehani",
+    "identifier": "emtehani.vercel.app",
+    "documentationUrl": "https://emtehani.vercel.app/api-docs/"
+  },
+  "entries": [
+    {
+      "identifier": "urn:air:emtehani.vercel.app:api:catalog",
+      "displayName": "Emtehani API Catalog",
+      "type": "application/linkset+json",
+      "url": "https://emtehani.vercel.app/.well-known/api-catalog",
+      "description": "RFC 9727 API catalog linking the Emtehani OpenAPI description, human documentation, and health endpoint.",
+      "representativeQueries": [
+        "What is the API for the Emtehani exam platform?",
+        "Where is the Emtehani OpenAPI specification?",
+        "Is the Emtehani API healthy right now?"
+      ]
+    },
+    {
+      "identifier": "urn:air:emtehani.vercel.app:api:openapi",
+      "displayName": "Emtehani API OpenAPI Specification",
+      "type": "application/openapi+json",
+      "url": "https://emtehani.runasp.net/swagger/v1/swagger.json",
+      "description": "Generated OpenAPI document for the Emtehani REST API, including authentication, exams, sessions, submissions, reviews, and teacher student management.",
+      "representativeQueries": [
+        "How do I authenticate with the Emtehani API?",
+        "Which endpoints create and publish an exam?",
+        "How can a student enter and submit an exam through the API?"
+      ]
+    },
+    {
+      "identifier": "urn:air:emtehani.vercel.app:docs:api",
+      "displayName": "Emtehani API Documentation",
+      "type": "text/html",
+      "url": "https://emtehani.vercel.app/api-docs/",
+      "description": "Public documentation covering authentication, public endpoints, rate limits, error format, and privacy boundaries for the Emtehani API.",
+      "representativeQueries": [
+        "How do I get started with the Emtehani API?",
+        "What are the rate limits for Emtehani?",
+        "What data is private on Emtehani?"
+      ]
+    },
+    {
+      "identifier": "urn:air:emtehani.vercel.app:docs:auth",
+      "displayName": "Emtehani Authentication Guide",
+      "type": "text/markdown",
+      "url": "https://emtehani.vercel.app/auth.md",
+      "description": "Markdown guide to Emtehani authentication: email/password, JWT access tokens, rotating refresh tokens, roles, access limits, and the OAuth/OIDC gap.",
+      "representativeQueries": [
+        "How does authentication work on Emtehani?",
+        "Does Emtehani support OAuth or OpenID Connect?",
+        "Can an AI agent register or get scoped access to Emtehani?"
+      ]
+    },
+    {
+      "identifier": "urn:air:emtehani.vercel.app:mcp:server-card",
+      "displayName": "Emtehani Public MCP Server",
+      "type": "application/mcp-server-card+json",
+      "url": "https://emtehani.vercel.app/.well-known/mcp/server-card.json",
+      "description": "Server card for the public, read-only Emtehani MCP server exposing platform information, the education catalog, service health, and discovery links.",
+      "representativeQueries": [
+        "What MCP tools does Emtehani expose?",
+        "Connect to the Emtehani MCP server",
+        "Which school stages and grades does Emtehani support?"
+      ]
+    },
+    {
+      "identifier": "urn:air:emtehani.vercel.app:skills:index",
+      "displayName": "Emtehani Agent Skills",
+      "type": "application/agent-skills+json",
+      "url": "https://emtehani.vercel.app/.well-known/agent-skills/index.json",
+      "description": "Agent Skills discovery index with verified SHA-256 digests for the Emtehani platform guide and public API guide.",
+      "representativeQueries": [
+        "Find skills for working with Emtehani",
+        "How should an agent use the Emtehani platform?",
+        "Install the Emtehani agent skill"
+      ]
+    }
+  ]
+}

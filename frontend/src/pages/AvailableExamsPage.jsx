@@ -143,7 +143,7 @@ export default function AvailableExamsPage({ token, onEnter }) {
 
       {error ? <Alert tone="danger" className="mb-4" onClose={() => setError('')}>{error}</Alert> : null}
 
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
+      <div className="ui-stagger mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
         <StatCard icon={BookOpenCheck} label="متاحة لك الآن" value={formatNumber(items.length)} note="امتحانات منشورة ولم تُستنفد محاولاتها" loading={loading} />
         <StatCard icon={Radio} label="جلسات جارية" value={formatNumber(live)} note="نشطة أو متوقفة مؤقتاً" tone="emerald" loading={loading} />
         <StatCard icon={RotateCcw} label="محاولات قيد الحل" value={formatNumber(resumable)} note="ستُستكمل عند الدخول مجدداً" tone="blue" loading={loading} className="col-span-2 lg:col-span-1" />

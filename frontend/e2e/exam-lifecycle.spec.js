@@ -55,7 +55,7 @@ test('teacher and student complete an exam with autosave, secure CSV, and idempo
   await expect(questionCard).toBeVisible({ timeout: 20_000 });
   await questionCard.locator('label').first().click();
   await expect(questionCard.getByRole('radio').first()).toBeChecked();
-  await expect(studentPage.locator('header [role="status"]')).toContainText('تم الحفظ تلقائياً', { timeout: 15_000 });
+  await expect(studentPage.locator('[data-testid="exam-save-status"]')).toContainText('تم الحفظ تلقائياً', { timeout: 15_000 });
 
   studentPage.on('dialog', (dialog) => dialog.accept());
   await studentPage.reload();
@@ -69,7 +69,7 @@ test('teacher and student complete an exam with autosave, secure CSV, and idempo
   await studentPage.getByRole('button', { name: 'تسليم الامتحان', exact: true }).filter({ visible: true }).first().click();
   await studentPage.getByRole('button', { name: 'تسليم نهائي', exact: true }).click();
   await expect(studentPage.getByText('نتيجتك', { exact: true })).toBeVisible({ timeout: 30_000 });
-  await expect(studentPage.getByText('بانتظار اعتماد النتائج').first()).toBeVisible();
+  await expect(studentPage.getByText('بانتظار موعد إظهار النتائج').first()).toBeVisible();
 
   await apiJson(request, 'PUT', `/api/exams/${exam.id}/state`, teacher.token, { action: 'close' });
 
@@ -78,7 +78,7 @@ test('teacher and student complete an exam with autosave, secure CSV, and idempo
   await expect(studentPage.locator('h1').filter({ hasText: 'أهلاً' })).toBeVisible();
   await openAppNav(studentPage, 'نتائجي');
   const pendingRow = studentPage.getByRole('row').filter({ hasText: exam.title });
-  await expect(pendingRow).toContainText('بانتظار اعتماد النتائج');
+  await expect(pendingRow).toContainText('بانتظار موعد النتائج');
 
   await expect(page.getByRole('button', { name: 'نشر النتائج للطلاب', exact: true })).toBeVisible({ timeout: 15_000 });
   await page.getByRole('button', { name: 'نشر النتائج للطلاب', exact: true }).click();

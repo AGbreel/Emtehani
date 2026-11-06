@@ -1,28 +1,36 @@
-import React, { useEffect, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowRight, LoaderCircle, LogOut, Sparkles } from 'lucide-react';
-import DeveloperPage from './DeveloperPage.jsx';
 import AppShell from './components/AppShell';
+import SessionCountdown from './components/SessionCountdown';
 import { Button, Logo } from './components/ui';
 import LandingPage from './pages/LandingPage';
 import AuthPage from './pages/AuthPage';
-import TeacherDashboard from './pages/TeacherDashboard';
-import StudentDashboard from './pages/StudentDashboard';
-import ExamsPage from './pages/ExamsPage';
-import ExamForm from './pages/ExamForm';
-import TeacherExamDetail from './pages/TeacherExamDetail';
-import ResultsPage from './pages/ResultsPage';
-import EssaysPage from './pages/EssaysPage';
-import TeacherRequestsPage from './pages/TeacherRequestsPage';
-import TeacherStudentsPage from './pages/TeacherStudentsPage';
-import TeachersPage from './pages/TeachersPage';
-import AuditPage from './pages/AuditPage';
-import AvailableExamsPage from './pages/AvailableExamsPage';
-import LobbyPage from './pages/LobbyPage';
-import ExamRoomPage from './pages/ExamRoomPage';
-import ReviewDetailPage from './pages/ReviewDetailPage';
-import EssayReviewPage from './pages/EssayReviewPage';
-import { clearAuth, getStoredAuth, request, storeAuth } from './lib/api';
+const DeveloperPage = lazy(() => import('./DeveloperPage.jsx'));
+const TeacherDashboard = lazy(() => import('./pages/TeacherDashboard'));
+const StudentDashboard = lazy(() => import('./pages/StudentDashboard'));
+const ExamsPage = lazy(() => import('./pages/ExamsPage'));
+const ExamForm = lazy(() => import('./pages/ExamForm'));
+const TeacherExamDetail = lazy(() => import('./pages/TeacherExamDetail'));
+const ResultsPage = lazy(() => import('./pages/ResultsPage'));
+const EssaysPage = lazy(() => import('./pages/EssaysPage'));
+const TeacherRequestsPage = lazy(() => import('./pages/TeacherRequestsPage'));
+const TeacherStudentsPage = lazy(() => import('./pages/TeacherStudentsPage'));
+const TeachersPage = lazy(() => import('./pages/TeachersPage'));
+const AuditPage = lazy(() => import('./pages/AuditPage'));
+const AvailableExamsPage = lazy(() => import('./pages/AvailableExamsPage'));
+const LobbyPage = lazy(() => import('./pages/LobbyPage'));
+const ExamRoomPage = lazy(() => import('./pages/ExamRoomPage'));
+const ReviewDetailPage = lazy(() => import('./pages/ReviewDetailPage'));
+const EssayReviewPage = lazy(() => import('./pages/EssayReviewPage'));
+const StudentProfilePage = lazy(() => import('./pages/StudentProfilePage'));
+const TeacherProfilePage = lazy(() => import('./pages/TeacherProfilePage'));
+const TeacherPortfolioPage = lazy(() => import('./pages/TeacherPortfolioPage'));
+const SubscriptionPage = lazy(() => import('./pages/SubscriptionPage'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const ChatPage = lazy(() => import('./pages/ChatPage'));
+import { authUserFromResponse, clearAuth, getStoredAuth, request, storeAuth, storeSession } from './lib/api';
+import { installWebMcpTools } from './lib/webmcp';
 
 const teacherTitles = {
   dashboard: 'مركز التحكم',
@@ -33,7 +41,12 @@ const teacherTitles = {
   essays: 'مراجعة المقالات',
   requests: 'طلبات الطلاب',
   students: 'إدارة الطلاب',
+  'teacher-profile': 'صفحتي التعريفية',
+  subscription: 'الاشتراك',
   audit: 'سجل النشاط',
+  chat: 'المحادثات',
+  review: 'مراجعة المحاولة',
+  'essay-review': 'تصحيح المحاولة',
 };
 
 const studentTitles = {
@@ -41,6 +54,16 @@ const studentTitles = {
   available: 'الامتحانات المتاحة',
   results: 'نتائجي',
   teachers: 'المدرسون',
+  profile: 'ملفي الأكاديمي',
+  chat: 'المحادثات',
+  review: 'مراجعة المحاولة',
+};
+
+const adminTitles = {
+  dashboard: 'لوحة الإدارة',
+  admin: 'لوحة الإدارة',
+  'admin-teachers': 'المدرسون والاشتراكات',
+  chat: 'المحادثات',
 };
 
 const activePages = {
@@ -48,6 +71,58 @@ const activePages = {
   review: 'results',
   'essay-review': 'essays',
 };
+
+const restorablePages = {
+  Teacher: new Set(['dashboard', 'exams', 'results', 'essays', 'requests', 'students', 'teacher-profile', 'subscription', 'audit', 'chat']),
+  Student: new Set(['dashboard', 'available', 'results', 'teachers', 'profile', 'chat']),
+  Admin: new Set(['dashboard', 'chat']),
+};
+
+const pageHashes = {
+  dashboard: '/dashboard',
+  exams: '/exams',
+  results: '/results',
+  essays: '/essays',
+  requests: '/requests',
+  students: '/students',
+  'teacher-profile': '/teacher-profile',
+  subscription: '/subscription',
+  audit: '/audit',
+  available: '/available',
+  teachers: '/teachers',
+  profile: '/profile',
+  chat: '/chat',
+};
+
+function pageFromHashFor(user) {
+  try {
+    const path = window.location.hash.replace(/^#/, '');
+    const entry = Object.entries(pageHashes).find(([, value]) => value === path);
+    return entry && restorablePages[user?.role]?.has(entry[0]) ? entry[0] : '';
+  } catch {
+    return '';
+  }
+}
+
+function storedPageFor(user) {
+  try {
+    const page = sessionStorage.getItem('emtehani-page');
+    return page && restorablePages[user?.role]?.has(page) ? page : '';
+  } catch {
+    return '';
+  }
+}
+
+function PageFallback() {
+  return (
+    <div className="grid min-h-[38vh] place-items-center">
+      <div className="flex flex-col items-center text-center">
+        <LoaderCircle size={20} className="animate-spin text-primary" />
+        <p className="mt-2 text-[11px] text-muted">جارٍ التحميل...</p>
+      </div>
+    </div>
+  );
+}
 
 function initialTheme() {
   try {
@@ -63,14 +138,26 @@ function isPortfolioUrl() {
   try { return new URLSearchParams(window.location.search).has('portfolio'); } catch { return false; }
 }
 
+function isInviteUrl() {
+  try { return new URLSearchParams(window.location.search).has('invite'); } catch { return false; }
+}
+
+export function teacherSlugFromPath() {
+  try {
+    const match = window.location.pathname.match(/^\/t\/([a-z0-9-]{3,64})\/?$/i);
+    return match ? match[1].toLowerCase() : '';
+  } catch { return ''; }
+}
+
 export default function App() {
   const stored = getStoredAuth();
   const [token, setToken] = useState(stored.token);
   const [user, setUser] = useState(stored.user);
   const [booting, setBooting] = useState(Boolean(stored.token));
   const [theme, setTheme] = useState(initialTheme);
-  const [page, setPage] = useState(() => isPortfolioUrl() ? 'portfolio' : 'landing');
-  const [authMode, setAuthMode] = useState('login');
+  const [page, setPage] = useState(() => isPortfolioUrl() ? 'portfolio' : isInviteUrl() ? 'auth' : 'landing');
+  const [teacherSlug, setTeacherSlug] = useState(() => teacherSlugFromPath());
+  const [authMode, setAuthMode] = useState(() => isInviteUrl() ? 'register' : 'login');
   const [selectedExam, setSelectedExam] = useState(null);
   const [joined, setJoined] = useState(null);
   const [paper, setPaper] = useState(null);
@@ -83,6 +170,11 @@ export default function App() {
     localStorage.setItem('emtehani-theme', theme);
   }, [theme]);
 
+  // Progressive enhancement: register public, read-only site tools only when
+  // the browser exposes WebMCP. Unsupported browsers and private data are
+  // unaffected; backend authorization remains authoritative.
+  useEffect(() => installWebMcpTools(), []);
+
   useEffect(() => {
     function onSessionExpired() {
       clearAuth();
@@ -93,7 +185,7 @@ export default function App() {
       setPaper(null);
       setReviewId('');
       setAuthMode('login');
-      setAuthNotice('انتهت صلاحية الجلسة. سجّل الدخول مرة أخرى للمتابعة.');
+      setAuthNotice('انتهت صلاحية الجلسة. سجّل الدخول مرة أخرى للمتابعة؛ إجاباتك المحفوظة لن تُفقد وسيُستأنف الامتحان تلقائياً.');
       setPage((current) => current === 'portfolio' ? current : 'auth');
     }
     window.addEventListener('emtehani:session-expired', onSessionExpired);
@@ -106,10 +198,17 @@ export default function App() {
     request('/api/auth/me', { token: stored.token })
       .then((me) => {
         if (!active) return;
-        const nextUser = { ...stored.user, ...me };
+        const nextUser = { ...stored.user, ...authUserFromResponse(me), ...me };
+        const latest = getStoredAuth();
         setUser(nextUser);
-        storeAuth(stored.token, nextUser);
-        setPage((current) => current === 'portfolio' ? current : 'dashboard');
+        setToken(latest.token || stored.token);
+        storeAuth(latest.token || stored.token, nextUser);
+        storeSession(me.sessionExpiresAtUtc, me.serverUtc);
+        setPage((current) => {
+          if (current === 'portfolio') return current;
+          if (nextUser.role === 'Teacher' && nextUser.subscriptionStatus !== 'Confirmed') return 'subscription';
+          return pageFromHashFor(nextUser) || storedPageFor(nextUser) || 'dashboard';
+        });
       })
       .catch((err) => {
         if (!active) return;
@@ -130,8 +229,13 @@ export default function App() {
 
   useEffect(() => {
     function onPopState() {
-      if (isPortfolioUrl()) setPage('portfolio');
-      else setPage((current) => current === 'portfolio' ? (user ? 'dashboard' : 'landing') : current);
+      setTeacherSlug(teacherSlugFromPath());
+      if (isPortfolioUrl()) {
+        setPage('portfolio');
+        return;
+      }
+      const hashPage = pageFromHashFor(user);
+      setPage(hashPage || (user ? 'dashboard' : 'landing'));
     }
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
@@ -142,10 +246,27 @@ export default function App() {
   }, [page]);
 
   useEffect(() => {
+    if (!user) return;
+    try {
+      if (restorablePages[user.role]?.has(page)) sessionStorage.setItem('emtehani-page', page);
+    } catch { /* storage may be unavailable in private mode */ }
+  }, [page, user]);
+
+  useEffect(() => {
+    if (!user || teacherSlug) return;
+    const path = pageHashes[page];
+    if (!path) return;
+    const nextHash = `#${path}`;
+    if (window.location.hash !== nextHash) window.history.pushState({ page }, '', nextHash);
+  }, [page, user, teacherSlug]);
+
+  useEffect(() => {
+    const titles = user?.role === 'Admin' ? adminTitles : user?.role === 'Teacher' ? teacherTitles : studentTitles;
+    const currentTitle = titles[page] || 'امتحاني';
     document.title = page === 'portfolio'
       ? 'Ahmed Gbreel · Full Stack Developer'
       : user
-        ? `${user.role === 'Teacher' ? 'مركز التحكم' : 'مساحة الطالب'} · امتحاني`
+        ? `${currentTitle} · امتحاني`
         : 'امتحاني · منصة امتحانات عربية';
   }, [page, user]);
 
@@ -155,20 +276,50 @@ export default function App() {
       body: JSON.stringify(mode === 'login' ? { email: payload.email, password: payload.password } : payload),
     });
     if (mode === 'register') {
+      // The account is created by the register call (which deliberately does not return a
+      // session). When the account is already active, sign in immediately so a teacher can
+      // choose the Free package right away. If e-mail verification is required, fall back
+      // to the normal "check your inbox" flow.
+      if (payload.role === 'Teacher') {
+        try {
+          const login = await request('/api/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ email: payload.email.trim(), password: payload.password }),
+          });
+          const nextUser = authUserFromResponse(login);
+          storeAuth(login.token, nextUser, login.refreshToken);
+          storeSession(login.sessionExpiresAtUtc, login.serverUtc);
+          setToken(login.token);
+          setUser(nextUser);
+          setAuthNotice('');
+          setAuthMode('login');
+          setPage('subscription');
+          return { registered: true, autoLoggedIn: true, message: data.message, studentCode: data.studentCode };
+        } catch {
+          // Verification is required or auto-login is unavailable; keep the notice path.
+        }
+      }
       return { registered: true, message: data.message, studentCode: data.studentCode };
     }
-    const nextUser = { fullName: data.fullName, email: data.email, role: data.role, studentCode: data.studentCode || '', stage: data.stage || '', grade: data.grade || '' };
-    storeAuth(data.token, nextUser);
+    const nextUser = authUserFromResponse(data);
+    storeAuth(data.token, nextUser, data.refreshToken);
+    storeSession(data.sessionExpiresAtUtc, data.serverUtc);
     setToken(data.token);
     setUser(nextUser);
     setAuthNotice('');
-    setPage('dashboard');
+    setPage(nextUser.role === 'Teacher' && nextUser.subscriptionStatus !== 'Confirmed' ? 'subscription' : 'dashboard');
     setAuthMode('login');
     return { registered: false };
   }
 
   function logout() {
+    try {
+      const refreshToken = localStorage.getItem('emtehani-refresh-token');
+      if (refreshToken) request('/api/auth/logout', { method: 'POST', body: JSON.stringify({ refreshToken }) }).catch(() => {});
+    } catch { /* best-effort revocation */ }
     clearAuth();
+    try { sessionStorage.removeItem('emtehani-page'); } catch { /* ignore */ }
+    try { window.history.replaceState(null, '', '/'); } catch { /* ignore */ }
     setToken('');
     setUser(null);
     setSelectedExam(null);
@@ -200,6 +351,11 @@ export default function App() {
 
   function navigate(next) {
     if (next === 'portfolio') { openPortfolio(); return; }
+    if (user?.role === 'Teacher' && user?.subscriptionStatus !== 'Confirmed' && next !== 'subscription') {
+      setPage('subscription');
+      return;
+    }
+    if ((next === 'admin' || next === 'admin-teachers') && user?.role !== 'Admin') { setPage('dashboard'); return; }
     if (next === 'exam-detail' && !selectedExam) { setPage('exams'); return; }
     if (next === 'lobby' && !joined) { setPage('dashboard'); return; }
     if (next === 'take' && !paper) { setPage('dashboard'); return; }
@@ -209,6 +365,18 @@ export default function App() {
   function updateEducation(profile) {
     setUser((current) => {
       const next = { ...current, ...profile };
+      storeAuth(token, next);
+      return next;
+    });
+  }
+
+  function updateSubscription(result) {
+    setUser((current) => {
+      const next = {
+        ...current,
+        subscriptionStatus: result?.status || 'Confirmed',
+        subscriptionPlan: result?.planCode || current?.subscriptionPlan || 'free',
+      };
       storeAuth(token, next);
       return next;
     });
@@ -262,6 +430,21 @@ export default function App() {
     setPage('dashboard');
   }
 
+  if (teacherSlug) {
+    return (
+      <Suspense fallback={<PageFallback />}>
+        <TeacherPortfolioPage
+          slug={teacherSlug}
+          onBack={() => {
+            try { window.history.pushState(null, '', '/'); } catch { /* ignore */ }
+            setTeacherSlug('');
+            setPage(user ? 'dashboard' : 'landing');
+          }}
+        />
+      </Suspense>
+    );
+  }
+
   if (booting) {
     return (
       <div className="grid min-h-dvh place-items-center bg-canvas px-4">
@@ -275,7 +458,7 @@ export default function App() {
   }
 
   if (page === 'portfolio') {
-    return <DeveloperPage theme={theme} onThemeChange={setTheme} onBack={closePortfolio} />;
+    return <Suspense fallback={<PageFallback />}><DeveloperPage theme={theme} onThemeChange={setTheme} onBack={closePortfolio} /></Suspense>;
   }
 
   if (!user || !token) {
@@ -306,7 +489,7 @@ export default function App() {
   }
 
   if (page === 'take' && paper) {
-    return <ExamRoomPage token={token} paper={paper} onSubmitted={submittedExam} />;
+    return <Suspense fallback={<PageFallback />}><ExamRoomPage token={token} user={user} paper={paper} onSubmitted={submittedExam} /></Suspense>;
   }
 
   if (page === 'lobby' && joined) {
@@ -315,23 +498,35 @@ export default function App() {
         <header className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <Logo />
           <div className="flex items-center gap-2">
+            <div className="hidden sm:block"><SessionCountdown compact /></div>
             <span className="hidden text-[11px] text-muted sm:inline">{user.fullName}</span>
             <Button variant="ghost" size="xs" icon={LogOut} onClick={logout}>خروج</Button>
           </div>
         </header>
         <div className="px-4 pb-12 sm:px-6">
-          <LobbyPage token={token} joined={joined} onStarted={startedExam} onResults={(id) => openReview(id, 'results')} onExit={exitLobby} />
+          <Suspense fallback={<PageFallback />}>
+            <LobbyPage token={token} joined={joined} onStarted={startedExam} onResults={(id) => openReview(id, 'results')} onExit={exitLobby} />
+          </Suspense>
         </div>
       </div>
     );
   }
 
   const isTeacher = user.role === 'Teacher';
-  const title = (isTeacher ? teacherTitles : studentTitles)[page] || 'امتحاني';
-  const activePage = activePages[page] || page;
+  const isAdmin = user.role === 'Admin';
+  const teacherPending = isTeacher && user.subscriptionStatus !== 'Confirmed';
+  const effectivePage = teacherPending ? 'subscription' : page;
+  const title = (isAdmin ? adminTitles : isTeacher ? teacherTitles : studentTitles)[effectivePage] || 'امتحاني';
+  const activePage = activePages[effectivePage] || effectivePage;
 
   let content;
-  if (page === 'dashboard') {
+  if (teacherPending) {
+    content = <SubscriptionPage token={token} onConfirmed={updateSubscription} />;
+  } else if (page === 'chat') {
+    content = <ChatPage token={token} user={user} />;
+  } else if (isAdmin) {
+    content = <AdminDashboard token={token} onNavigate={navigate} />;
+  } else if (page === 'dashboard') {
     content = isTeacher
       ? <TeacherDashboard token={token} user={user} onNavigate={navigate} onCreate={() => setPage('create')} onOpenExam={openExam} />
       : <StudentDashboard token={token} user={user} onBrowse={() => setPage('available')} onEnter={joinedExam} onViewResults={() => setPage('results')} onOpenReview={(id) => openReview(id, 'dashboard')} onProfileUpdated={updateEducation} />;
@@ -351,8 +546,14 @@ export default function App() {
     content = <TeacherRequestsPage token={token} />;
   } else if (page === 'students' && isTeacher) {
     content = <TeacherStudentsPage token={token} />;
+  } else if (page === 'teacher-profile' && isTeacher) {
+    content = <TeacherProfilePage token={token} />;
   } else if (page === 'teachers' && !isTeacher) {
     content = <TeachersPage token={token} />;
+  } else if (page === 'profile' && !isTeacher) {
+    content = <StudentProfilePage token={token} onProfileUpdated={updateEducation} />;
+  } else if (page === 'subscription' && isTeacher) {
+    content = <SubscriptionPage token={token} onConfirmed={updateSubscription} />;
   } else if (page === 'audit') {
     content = <AuditPage token={token} />;
   } else if (page === 'review' && reviewId) {
@@ -366,10 +567,10 @@ export default function App() {
   }
 
   return (
-    <AppShell user={user} page={page} activePage={activePage} title={title} onNavigate={navigate} onLogout={logout} theme={theme} onToggleTheme={() => setTheme((value) => value === 'dark' ? 'light' : 'dark')}>
+    <AppShell user={user} token={token} page={effectivePage} activePage={activePage} title={title} onNavigate={navigate} onLogout={logout} theme={theme} onToggleTheme={() => setTheme((value) => value === 'dark' ? 'light' : 'dark')}>
       <AnimatePresence mode="wait">
-        <motion.div key={page} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-          {content}
+        <motion.div key={effectivePage} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
+          <Suspense fallback={<PageFallback />}>{content}</Suspense>
         </motion.div>
       </AnimatePresence>
     </AppShell>

@@ -1,0 +1,69 @@
+{
+  "linkset": [
+    {
+      "anchor": "https://emtehani.vercel.app/",
+      "service-desc": [
+        {
+          "href": "https://emtehani.runasp.net/swagger/v1/swagger.json",
+          "type": "application/json",
+          "title": "Emtehani API OpenAPI Specification"
+        }
+      ],
+      "service-doc": [
+        {
+          "href": "https://emtehani.vercel.app/api-docs/",
+          "type": "text/html",
+          "title": "Emtehani API Documentation"
+        },
+        {
+          "href": "https://emtehani.vercel.app/auth.md",
+          "type": "text/markdown",
+          "title": "Authentication and Access Guide"
+        }
+      ],
+      "status": [
+        {
+          "href": "https://emtehani.runasp.net/health",
+          "type": "text/plain",
+          "title": "API Health Check"
+        }
+      ],
+      "service-meta": [
+        {
+          "href": "https://emtehani.vercel.app/.well-known/ai-catalog.json",
+          "type": "application/json",
+          "title": "Agentic Resource Discovery Manifest"
+        },
+        {
+          "href": "https://emtehani.vercel.app/.well-known/agent-skills/index.json",
+          "type": "application/json",
+          "title": "Agent Skills Discovery Index"
+        }
+      ]
+    },
+    {
+      "anchor": "https://emtehani.runasp.net/",
+      "service-desc": [
+        {
+          "href": "https://emtehani.runasp.net/swagger/v1/swagger.json",
+          "type": "application/json",
+          "title": "Emtehani API OpenAPI Specification"
+        }
+      ],
+      "service-doc": [
+        {
+          "href": "https://emtehani.vercel.app/api-docs/",
+          "type": "text/html",
+          "title": "Emtehani API Documentation"
+        }
+      ],
+      "status": [
+        {
+          "href": "https://emtehani.runasp.net/health",
+          "type": "text/plain",
+          "title": "API Health Check"
+        }
+      ]
+    }
+  ]
+}
