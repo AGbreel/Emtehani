@@ -93,6 +93,14 @@ public static class TeachingSchema
                 ALTER TABLE [Notifications] ADD [Category] nvarchar(24) NOT NULL CONSTRAINT [DF_Notifications_Category] DEFAULT N'System';
             IF COL_LENGTH('dbo.Notifications','AnnouncementId') IS NULL
                 ALTER TABLE [Notifications] ADD [AnnouncementId] uniqueidentifier NULL;
+            IF COL_LENGTH('dbo.StudentPayments','CoverageType') IS NULL
+                ALTER TABLE [StudentPayments] ADD [CoverageType] nvarchar(16) NULL;
+            IF COL_LENGTH('dbo.StudentPayments','SessionsCount') IS NULL
+                ALTER TABLE [StudentPayments] ADD [SessionsCount] int NULL;
+            IF COL_LENGTH('dbo.StudentPayments','PeriodMonth') IS NULL
+                ALTER TABLE [StudentPayments] ADD [PeriodMonth] int NULL;
+            IF COL_LENGTH('dbo.StudentPayments','PeriodYear') IS NULL
+                ALTER TABLE [StudentPayments] ADD [PeriodYear] int NULL;
             """, cancellationToken);
 
         // ---------- new tables ----------
@@ -585,6 +593,10 @@ public static class TeachingSchema
                     [Reference] nvarchar(200) NULL,
                     [Notes] nvarchar(500) NULL,
                     [ReceiptNumber] nvarchar(40) NOT NULL DEFAULT N'',
+                    [CoverageType] nvarchar(16) NULL,
+                    [SessionsCount] int NULL,
+                    [PeriodMonth] int NULL,
+                    [PeriodYear] int NULL,
                     [ReceivedByUserId] uniqueidentifier NULL,
                     [PaidAtUtc] datetime2 NOT NULL,
                     [IsVoid] bit NOT NULL DEFAULT 0,
@@ -594,6 +606,33 @@ public static class TeachingSchema
                 );
                 CREATE INDEX [IX_StudentPayments_TeacherId_StudentId] ON [StudentPayments]([TeacherId],[StudentId]);
                 CREATE UNIQUE INDEX [IX_StudentPayments_ReceiptNumber] ON [StudentPayments]([ReceiptNumber]);
+            END;
+            IF OBJECT_ID(N'dbo.GroupPaymentRequests',N'U') IS NULL
+            BEGIN
+                CREATE TABLE [GroupPaymentRequests](
+                    [Id] uniqueidentifier NOT NULL,
+                    [TeacherId] uniqueidentifier NOT NULL,
+                    [StudentId] uniqueidentifier NOT NULL,
+                    [GroupId] uniqueidentifier NOT NULL,
+                    [Amount] decimal(12,2) NOT NULL DEFAULT 0,
+                    [CoverageType] nvarchar(16) NOT NULL DEFAULT N'Month',
+                    [SessionsCount] int NULL,
+                    [PeriodMonth] int NULL,
+                    [PeriodYear] int NULL,
+                    [Method] nvarchar(24) NOT NULL DEFAULT N'Cash',
+                    [Reference] nvarchar(200) NULL,
+                    [Notes] nvarchar(500) NULL,
+                    [Status] nvarchar(16) NOT NULL DEFAULT N'Pending',
+                    [ReviewNote] nvarchar(500) NULL,
+                    [ReviewedAtUtc] datetime2 NULL,
+                    [ReviewedByUserId] uniqueidentifier NULL,
+                    [PaymentId] uniqueidentifier NULL,
+                    [CreatedAtUtc] datetime2 NOT NULL,
+                    [UpdatedAtUtc] datetime2 NOT NULL,
+                    CONSTRAINT [PK_GroupPaymentRequests] PRIMARY KEY([Id])
+                );
+                CREATE INDEX [IX_GroupPaymentRequests_TeacherId_Status] ON [GroupPaymentRequests]([TeacherId],[Status]);
+                CREATE INDEX [IX_GroupPaymentRequests_StudentId_CreatedAtUtc] ON [GroupPaymentRequests]([StudentId],[CreatedAtUtc]);
             END;
             IF OBJECT_ID(N'dbo.FinancialAdjustments',N'U') IS NULL
             BEGIN
@@ -773,6 +812,10 @@ public static class TeachingSchema
             ALTER TABLE "Notifications" ADD COLUMN IF NOT EXISTS "Category" character varying(24) NOT NULL DEFAULT 'System';
             ALTER TABLE "Notifications" ADD COLUMN IF NOT EXISTS "AnnouncementId" uuid NULL;
             CREATE INDEX IF NOT EXISTS "IX_Notifications_AnnouncementId" ON "Notifications" ("AnnouncementId");
+            ALTER TABLE "StudentPayments" ADD COLUMN IF NOT EXISTS "CoverageType" character varying(16) NULL;
+            ALTER TABLE "StudentPayments" ADD COLUMN IF NOT EXISTS "SessionsCount" integer NULL;
+            ALTER TABLE "StudentPayments" ADD COLUMN IF NOT EXISTS "PeriodMonth" integer NULL;
+            ALTER TABLE "StudentPayments" ADD COLUMN IF NOT EXISTS "PeriodYear" integer NULL;
             """, cancellationToken);
 
         await db.Database.ExecuteSqlRawAsync("""
@@ -961,10 +1004,23 @@ public static class TeachingSchema
                 "CourseId" uuid NULL, "PackageId" uuid NULL, "ChargeId" uuid NULL, "Amount" numeric(12,2) NOT NULL DEFAULT 0,
                 "Method" character varying(24) NOT NULL DEFAULT 'Cash', "Reference" character varying(200) NULL,
                 "Notes" character varying(500) NULL, "ReceiptNumber" character varying(40) NOT NULL DEFAULT '',
+                "CoverageType" character varying(16) NULL, "SessionsCount" integer NULL,
+                "PeriodMonth" integer NULL, "PeriodYear" integer NULL,
                 "ReceivedByUserId" uuid NULL, "PaidAtUtc" timestamp with time zone NOT NULL,
                 "IsVoid" boolean NOT NULL DEFAULT FALSE, "VoidReason" character varying(500) NULL,
                 "CreatedAtUtc" timestamp with time zone NOT NULL, CONSTRAINT "PK_StudentPayments" PRIMARY KEY("Id"));
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_StudentPayments_ReceiptNumber" ON "StudentPayments"("ReceiptNumber");
+            CREATE TABLE IF NOT EXISTS "GroupPaymentRequests"(
+                "Id" uuid NOT NULL, "TeacherId" uuid NOT NULL, "StudentId" uuid NOT NULL, "GroupId" uuid NOT NULL,
+                "Amount" numeric(12,2) NOT NULL DEFAULT 0, "CoverageType" character varying(16) NOT NULL DEFAULT 'Month',
+                "SessionsCount" integer NULL, "PeriodMonth" integer NULL, "PeriodYear" integer NULL,
+                "Method" character varying(24) NOT NULL DEFAULT 'Cash', "Reference" character varying(200) NULL,
+                "Notes" character varying(500) NULL, "Status" character varying(16) NOT NULL DEFAULT 'Pending',
+                "ReviewNote" character varying(500) NULL, "ReviewedAtUtc" timestamp with time zone NULL,
+                "ReviewedByUserId" uuid NULL, "PaymentId" uuid NULL, "CreatedAtUtc" timestamp with time zone NOT NULL,
+                "UpdatedAtUtc" timestamp with time zone NOT NULL, CONSTRAINT "PK_GroupPaymentRequests" PRIMARY KEY("Id"));
+            CREATE INDEX IF NOT EXISTS "IX_GroupPaymentRequests_TeacherId_Status" ON "GroupPaymentRequests"("TeacherId","Status");
+            CREATE INDEX IF NOT EXISTS "IX_GroupPaymentRequests_StudentId_CreatedAtUtc" ON "GroupPaymentRequests"("StudentId","CreatedAtUtc");
             CREATE TABLE IF NOT EXISTS "FinancialAdjustments"(
                 "Id" uuid NOT NULL, "TeacherId" uuid NOT NULL, "StudentId" uuid NOT NULL, "GroupId" uuid NULL,
                 "Kind" character varying(24) NOT NULL DEFAULT 'Discount', "Amount" numeric(12,2) NOT NULL DEFAULT 0,

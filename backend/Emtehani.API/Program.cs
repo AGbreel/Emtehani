@@ -889,44 +889,73 @@ async Task<List<ExamParticipantView>> ParticipantViews(AppDbContext db, Exam exa
             RemainingSeconds(submission, exam, now));
     }).ToList();
 }
-string BrandedEmail(string kicker, string heading, string introHtml, string ctaLabel, string ctaUrl, string footnote)
+string BrandedEmail(string kicker, string heading, string introHtml, string ctaLabel, string ctaUrl, string footnote,
+    IReadOnlyList<string>? highlights = null, string? preheader = null)
 {
     var safeUrl = WebUtility.HtmlEncode(ctaUrl);
     var safeHeading = WebUtility.HtmlEncode(heading);
     var safeCta = WebUtility.HtmlEncode(ctaLabel);
     var safeFootnote = WebUtility.HtmlEncode(footnote);
+    var safePreheader = WebUtility.HtmlEncode(preheader ?? heading);
+    var bulletRows = new StringBuilder();
+    foreach (var item in highlights ?? [])
+    {
+        bulletRows.Append("<tr><td valign=\"top\" style=\"padding:7px 0;font-size:13px;line-height:1.8;color:#3c5248;\">");
+        bulletRows.Append("<span style=\"display:inline-block;width:18px;height:18px;border-radius:50%;background:#0b3d2e;color:#d4af37;font-size:11px;font-weight:bold;text-align:center;line-height:18px;margin-left:8px;\">&#10003;</span>");
+        bulletRows.Append(WebUtility.HtmlEncode(item));
+        bulletRows.Append("</td></tr>");
+    }
+    var highlightsHtml = bulletRows.Length > 0
+        ? "<tr><td style=\"padding:22px 32px 4px;\"><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:#f8f4e8;border:1px solid #ece0c4;border-radius:16px;padding:10px 18px;\">"
+          + bulletRows + "</table></td></tr>"
+        : string.Empty;
     return $@"<!doctype html>
 <html lang=""ar"" dir=""rtl"">
-<head><meta charset=""utf-8""><meta name=""viewport"" content=""width=device-width,initial-scale=1""><title>{safeHeading}</title></head>
-<body style=""margin:0;padding:0;background:#071410;"">
-<table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""background:#071410;padding:28px 12px;"">
+<head>
+<meta charset=""utf-8"">
+<meta name=""viewport"" content=""width=device-width,initial-scale=1"">
+<meta name=""color-scheme"" content=""light only"">
+<title>{safeHeading}</title>
+</head>
+<body style=""margin:0;padding:0;background:#f4efe3;"">
+<div style=""display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;"">{safePreheader}</div>
+<table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""background:#f4efe3;padding:28px 12px;"">
 <tr><td align=""center"">
-<table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""max-width:600px;background:#0c1d15;border:1px solid #1e3a2a;border-radius:18px;overflow:hidden;font-family:Tahoma,Arial,sans-serif;"">
-<tr><td style=""background:#0f2b1e;padding:30px 32px 26px;text-align:center;border-bottom:1px solid #1e3a2a;"">
-<div style=""font-size:11px;letter-spacing:2px;color:#c9a227;font-weight:bold;"">{WebUtility.HtmlEncode(kicker)}</div>
-<div style=""margin-top:8px;font-size:30px;font-weight:bold;color:#d4af37;"">امتحاني</div>
-<div style=""width:56px;height:3px;background:#d4af37;border-radius:2px;margin:14px auto 0;""></div>
+<table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""max-width:600px;background:#fffdf7;border:1px solid #e3d7bb;border-radius:22px;overflow:hidden;font-family:Tahoma,Arial,sans-serif;box-shadow:0 18px 50px rgba(11,61,46,.12);"">
+<tr><td style=""height:5px;background:#c9a227;font-size:0;line-height:0;"">&nbsp;</td></tr>
+<tr><td style=""background:#0b3d2e;padding:30px 32px 26px;text-align:center;"">
+<table role=""presentation"" cellpadding=""0"" cellspacing=""0"" align=""center"" style=""margin:0 auto;""><tr>
+<td style=""width:54px;height:54px;border-radius:16px;background:#0f4a37;border:1.5px solid #d4af37;text-align:center;vertical-align:middle;color:#d4af37;font-size:22px;font-weight:bold;"">ا</td>
+</tr></table>
+<div style=""margin-top:12px;font-size:12px;letter-spacing:3px;color:#d4af37;font-weight:bold;"">{WebUtility.HtmlEncode(kicker)}</div>
+<div style=""margin-top:6px;font-size:27px;font-weight:bold;color:#ffffff;"">امتحاني</div>
+<div style=""margin-top:6px;font-size:11.5px;color:#a9c4b6;"">منصة تعليمية متكاملة · امتحانات وتعلّم ومتابعة</div>
 </td></tr>
-<tr><td style=""padding:34px 32px 8px;text-align:right;"">
-<h1 style=""margin:0 0 14px;font-size:21px;line-height:1.5;color:#f2f6f3;"">{safeHeading}</h1>
-<p style=""margin:0;font-size:14px;line-height:1.9;color:#a9bcb1;"">{introHtml}</p>
+<tr><td style=""padding:34px 32px 6px;text-align:right;"">
+<div style=""display:inline-block;background:#f6efdc;border:1px solid #e8d9b0;color:#8a6d19;font-size:11px;font-weight:bold;padding:5px 12px;border-radius:999px;margin-bottom:14px;"">رسالة تأكيد رسمية</div>
+<h1 style=""margin:0 0 12px;font-size:22px;line-height:1.55;color:#0b3d2e;font-weight:bold;"">{safeHeading}</h1>
+<p style=""margin:0;font-size:14px;line-height:1.95;color:#4a5f55;"">{introHtml}</p>
 </td></tr>
-<tr><td align=""center"" style=""padding:26px 32px 10px;"">
-<a href=""{safeUrl}"" style=""display:inline-block;background:#d4af37;color:#10231a;text-decoration:none;font-size:15px;font-weight:bold;padding:14px 34px;border-radius:10px;"">{safeCta}</a>
+{(highlightsHtml)}
+<tr><td align=""center"" style=""padding:26px 32px 8px;"">
+<a href=""{safeUrl}"" style=""display:inline-block;background:#c9a227;color:#12241b;text-decoration:none;font-size:15px;font-weight:bold;padding:15px 40px;border-radius:12px;border:1px solid #b8921f;box-shadow:0 8px 20px rgba(201,162,39,.28);"">{safeCta}</a>
+<div style=""margin-top:10px;font-size:11px;color:#8b9a92;"">زر واحد فقط — وتبدأ رحلتك على المنصة</div>
 </td></tr>
-<tr><td style=""padding:10px 32px 0;text-align:right;"">
-<p style=""margin:0;font-size:11.5px;color:#7e948a;line-height:1.9;"">إذا لم يعمل الزر، انسخ هذا الرابط وافتحه في المتصفح:</p>
-<p style=""margin:8px 0 0;font-size:11px;line-height:1.8;word-break:break-all;""><a href=""{safeUrl}"" style=""color:#d4af37;text-decoration:underline;"">{safeUrl}</a></p>
+<tr><td style=""padding:14px 32px 0;text-align:right;"">
+<p style=""margin:0;font-size:11.5px;color:#7c8d84;line-height:1.9;"">إذا لم يعمل الزر، انسخ هذا الرابط وافتحه في المتصفح:</p>
+<p style=""margin:8px 0 0;font-size:11px;line-height:1.8;word-break:break-all;""><a href=""{safeUrl}"" style=""color:#0b3d2e;text-decoration:underline;font-weight:bold;"">{safeUrl}</a></p>
 </td></tr>
 <tr><td style=""padding:20px 32px 26px;text-align:right;"">
-<p style=""margin:0;font-size:12px;line-height:1.9;color:#8aa094;"">{safeFootnote}</p>
+<table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""background:#fbf7ee;border-right:4px solid #c9a227;border-radius:10px;padding:12px 16px;"">
+<tr><td style=""font-size:12px;line-height:1.9;color:#5d6f66;"">{safeFootnote}</td></tr>
+</table>
 </td></tr>
-<tr><td style=""background:#081711;padding:18px 32px;text-align:center;border-top:1px solid #1a3326;"">
-<p style=""margin:0;font-size:11px;color:#6d8279;line-height:1.9;"">منصة امتحاني · امتحانات أونلاين عربية</p>
-<p style=""margin:4px 0 0;font-size:10.5px;color:#576b62;"">هذه رسالة آلية، لا ترد عليها مباشرة.</p>
+<tr><td style=""background:#0b3d2e;padding:20px 32px;text-align:center;"">
+<p style=""margin:0;font-size:12px;color:#d9e6df;font-weight:bold;line-height:1.9;"">منصة امتحاني · امتحانات أونلاين عربية</p>
+<p style=""margin:5px 0 0;font-size:10.5px;color:#8fae9f;"">هذه رسالة آلية أُرسلت لتأمين حسابك، لا تشارك رابطها مع أي شخص ولا ترد عليها.</p>
 </td></tr>
 </table>
-<p style=""margin:14px 0 0;font-size:10px;color:#4e635a;"">© {DateTime.UtcNow.Year} امتحاني. جميع الحقوق محفوظة.</p>
+<p style=""margin:14px 0 0;font-size:10px;color:#9aa89f;"">© {DateTime.UtcNow.Year} امتحاني. جميع الحقوق محفوظة.</p>
 </td></tr>
 </table>
 </body>
@@ -940,11 +969,13 @@ async Task<bool> SendVerificationEmail(AppUser user, string verifyToken)
     try
     {
         var fromAddress = builder.Configuration["Email:From"] ?? "no-reply@localhost";
-        var intro = $"أهلاً <strong style=\"color:#e8efe9\">{WebUtility.HtmlEncode(user.FullName)}</strong>، خطوتك الأخيرة لتفعيل حسابك في منصة امتحاني. اضغط على الزر أدناه لتأكيد بريدك والبدء.";
-        var html = BrandedEmail("منصة تعليمية", "تأكيد البريد الإلكتروني", intro, "تأكيد البريد الإلكتروني", verifyUrl,
-            "الرابط صالح لمدة 24 ساعة. إذا لم تنشئ هذا الحساب، تجاهل هذه الرسالة ولن يتم تفعيل البريد.");
-        using var mail = new MailMessage(fromAddress, user.Email, "تأكيد البريد الإلكتروني – منصة امتحاني", html) { IsBodyHtml = true };
-        mail.From = new MailAddress(fromAddress, "امتحاني", Encoding.UTF8);
+        var intro = $"أهلاً <strong style=\"color:#0b3d2e\">{WebUtility.HtmlEncode(user.FullName)}</strong>،<br/>سعداء بانضمامك إلى منصة امتحاني. خطوة واحدة تفصلك عن تجربة تعليمية كاملة: امتحانات إلكترونية، كورسات منظمة، مجموعات وحصص، ومتابعة مباشرة مع معلميك. اضغط الزر أدناه لتأكيد بريدك والبدء.";
+        var html = BrandedEmail("تأكيد الحساب", "بريدك الإلكتروني على بُعد خطوة من التفعيل", intro, "تأكيد البريد وبدء التعلم", verifyUrl,
+            "الرابط صالح لمدة 24 ساعة وللاستخدام مرة واحدة. إذا لم تنشئ هذا الحساب، تجاهل هذه الرسالة ولن يتم تفعيل البريد.",
+            ["حساب موثّق وآمن باسمك", "وصول فوري للامتحانات والكورسات", "إشعارات الحصص والنتائج والمدفوعات"],
+            "أهلاً بك في امتحاني — فعّل بريدك الآن وابدأ أول خطوة في رحلتك التعليمية.");
+        using var mail = new MailMessage(fromAddress, user.Email, "أهلاً بك في امتحاني — أكّد بريدك لتبدأ", html) { IsBodyHtml = true };
+        mail.From = new MailAddress(fromAddress, "منصة امتحاني", Encoding.UTF8);
         mail.SubjectEncoding = Encoding.UTF8;
         mail.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(
             $"أهلاً {user.FullName}،\r\n\r\nلتفعيل حسابك في منصة امتحاني افتح الرابط التالي:\r\n{verifyUrl}\r\n\r\nالرابط صالح لمدة 24 ساعة.",
@@ -2864,7 +2895,7 @@ app.MapPost("/api/uploads/image", async (HttpRequest req, ClaimsPrincipal p) =>
 app.MapPost("/api/uploads/media", async (HttpRequest req, ClaimsPrincipal p, AppDbContext db) =>
 {
     var role = p.FindFirstValue(ClaimTypes.Role);
-    if (role is not ("Teacher" or "Assistant")) return Results.Forbid();
+    if (role is not ("Teacher" or "Assistant" or "Student")) return Results.Forbid();
     if (role == "Assistant")
     {
         var scope = await TeachingAccess.ResolveAsync(db, p);
@@ -2876,6 +2907,8 @@ app.MapPost("/api/uploads/media", async (HttpRequest req, ClaimsPrincipal p, App
         app.Configuration.GetValue<long?>("Uploads:MaxMediaBytes") ?? TeachingMediaFiles.DefaultMaxBytes,
         5L * 1024 * 1024,
         1024L * 1024 * 1024);
+    // Students only attach homework files, so keep their ceiling small.
+    if (role == "Student") maxBytes = Math.Min(maxBytes, 40L * 1024 * 1024);
     // Kestrel's global ceiling is 8 MB; raise it for this request only.
     var sizeFeature = req.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
     if (sizeFeature is { IsReadOnly: false }) sizeFeature.MaxRequestBodySize = maxBytes + 1024 * 1024;
@@ -2905,6 +2938,8 @@ app.MapPost("/api/uploads/media", async (HttpRequest req, ClaimsPrincipal p, App
     if (info is null)
         return Results.BadRequest(new { message = "الصيغة غير مدعومة. المسموح: MP4/WebM/MOV للفيديو، MP3/WAV للصوت، PDF وملفات Office للمستندات." });
     var (kind, mime) = info.Value;
+    if (role == "Student" && kind is not ("Pdf" or "Document" or "Image"))
+        return Results.BadRequest(new { message = "طلاب الواجبات يرفعون ملفات PDF أو Word أو صور أو نصوص فقط." });
 
     await using var stream = file.OpenReadStream();
     var header = new byte[16];

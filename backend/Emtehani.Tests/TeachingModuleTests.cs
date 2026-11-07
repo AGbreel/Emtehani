@@ -347,12 +347,26 @@ public sealed class TeachingModuleTests(ApiFactory factory) : IClassFixture<ApiF
 
         var joinGroup = await student.PostAsync($"/api/teaching/groups/{openGroupId}/join", null);
         Assert.Equal(HttpStatusCode.OK, joinGroup.StatusCode);
-        Assert.False((await Json(joinGroup))["alreadyMember"]!.GetValue<bool>());
+        var joinBody = await Json(joinGroup);
+        Assert.True(joinBody["pendingApproval"]!.GetValue<bool>());
+        Assert.False(joinBody["alreadyMember"]!.GetValue<bool>());
         var joinAgain = await student.PostAsync($"/api/teaching/groups/{openGroupId}/join", null);
         Assert.Equal(HttpStatusCode.OK, joinAgain.StatusCode);
-        Assert.True((await Json(joinAgain))["alreadyMember"]!.GetValue<bool>());
+        Assert.True((await Json(joinAgain))["pendingApproval"]!.GetValue<bool>());
         var myGroups = await student.GetFromJsonAsync<JsonNode>("/api/teaching/my/groups");
-        Assert.Contains(myGroups!["items"]!.AsArray(), x => Id(x) == openGroupId);
+        var pendingRow = myGroups!["items"]!.AsArray().Single(x => Id(x) == openGroupId);
+        Assert.Equal("Pending", pendingRow["status"]!.GetValue<string>());
+        var afterRequest = await student.GetFromJsonAsync<JsonNode>("/api/teaching/explore/groups");
+        Assert.False(afterRequest!["items"]!.AsArray().Single(x => Id(x) == openGroupId)!["canJoin"]!.GetValue<bool>());
+
+        var members = await teacher.GetFromJsonAsync<JsonNode>($"/api/teaching/groups/{openGroupId}/members");
+        var pendingMember = members!["items"]!.AsArray().Single(x => x!["status"]!.GetValue<string>() == "Pending");
+        var studentId = Guid.Parse(pendingMember!["studentId"]!.GetValue<string>());
+        var approve = await teacher.PutAsJsonAsync($"/api/teaching/groups/{openGroupId}/members/{studentId}",
+            new { status = "Active", note = (string?)null });
+        Assert.Equal(HttpStatusCode.OK, approve.StatusCode);
+        myGroups = await student.GetFromJsonAsync<JsonNode>("/api/teaching/my/groups");
+        Assert.Equal("Active", myGroups!["items"]!.AsArray().Single(x => Id(x) == openGroupId)!["status"]!.GetValue<string>());
 
         Assert.Equal(HttpStatusCode.BadRequest, (await student.PostAsync($"/api/teaching/groups/{closedGroupId}/join", null)).StatusCode);
 

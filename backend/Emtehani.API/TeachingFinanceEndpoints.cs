@@ -824,6 +824,7 @@ public static class TeachingFinanceEndpoints
                 {
                     x.Id, x.StudentId, StudentName = names.GetValueOrDefault(x.StudentId),
                     x.GroupId, x.CourseId, x.PackageId, x.ChargeId, x.Amount, x.Method,
+                    x.CoverageType, x.SessionsCount, x.PeriodMonth, x.PeriodYear,
                     x.Reference, x.Notes, x.ReceiptNumber, x.PaidAtUtc, x.IsVoid, x.VoidReason
                 })
             });
@@ -849,6 +850,8 @@ public static class TeachingFinanceEndpoints
             var method = string.IsNullOrWhiteSpace(req.Method) ? "Cash" : req.Method.Trim();
             if (!new[] { "Cash", "VodafoneCash", "InstaPay", "BankTransfer", "Online" }.Contains(method))
                 return TeachingAccess.Bad("طريقة الدفع غير صالحة.");
+            var coverage = NormalizeCoverage(req.CoverageType, req.SessionsCount, req.PeriodMonth, req.PeriodYear, out var coverageError);
+            if (coverageError is not null) return TeachingAccess.Bad(coverageError);
             var payment = new StudentPayment
             {
                 TeacherId = scope.TeacherId,
@@ -861,6 +864,10 @@ public static class TeachingFinanceEndpoints
                 Method = method,
                 Reference = TeachingText.NullIfEmpty(req.Reference),
                 Notes = TeachingText.NullIfEmpty(req.Notes),
+                CoverageType = coverage.Type,
+                SessionsCount = coverage.Sessions,
+                PeriodMonth = coverage.Month,
+                PeriodYear = coverage.Year,
                 ReceiptNumber = GenerateReceiptNumber(),
                 ReceivedByUserId = scope.UserId,
                 PaidAtUtc = req.PaidAtUtc ?? DateTime.UtcNow
@@ -1173,6 +1180,7 @@ public static class TeachingFinanceEndpoints
                 payments = payments.Select(x => new
                 {
                     x.Id, x.Amount, x.Method, x.Reference, x.Notes, x.ReceiptNumber,
+                    x.CoverageType, x.SessionsCount, x.PeriodMonth, x.PeriodYear,
                     x.PaidAtUtc, x.IsVoid, x.VoidReason, x.ChargeId
                 }),
                 adjustments = adjustments.Select(x => new { x.Id, x.Kind, x.Amount, x.Reason, x.CreatedAtUtc }),
@@ -1235,7 +1243,8 @@ public static class TeachingFinanceEndpoints
                 payments = payments.Select(x => new
                 {
                     x.Id, TeacherName = teachers.GetValueOrDefault(x.TeacherId),
-                    x.Amount, x.Method, x.Reference, x.Notes, x.ReceiptNumber, x.PaidAtUtc
+                    x.Amount, x.Method, x.Reference, x.Notes, x.ReceiptNumber,
+                    x.CoverageType, x.SessionsCount, x.PeriodMonth, x.PeriodYear, x.PaidAtUtc
                 }),
                 adjustments = adjustments.Select(x => new
                 {
@@ -1248,6 +1257,160 @@ public static class TeachingFinanceEndpoints
                     x.PackageId, x.Status, x.StartsAtUtc, x.ExpiresAtUtc, x.AmountDue, x.AmountPaid
                 })
             });
+        }).RequireAuthorization().RequireRateLimiting("api");
+
+        // ---------------------- group payment requests ------------------------
+        app.MapGet("/api/teaching/finance/payment-requests", async (string? status, Guid? groupId, ClaimsPrincipal p, AppDbContext db) =>
+        {
+            var scope = await TeachingAccess.ResolveAsync(db, p);
+            if (scope is null || !scope.Has(TeachingPermissions.PaymentsView)) return TeachingAccess.Deny();
+            var query = db.GroupPaymentRequests.AsNoTracking().Where(x => x.TeacherId == scope.TeacherId);
+            if (!string.IsNullOrWhiteSpace(status)) query = query.Where(x => x.Status == status);
+            if (groupId.HasValue) query = query.Where(x => x.GroupId == groupId);
+            var rows = await query.OrderByDescending(x => x.CreatedAtUtc).Take(300).ToListAsync();
+            var studentIds = rows.Select(x => x.StudentId).Distinct().ToList();
+            var groupIds = rows.Select(x => x.GroupId).Distinct().ToList();
+            var students = await db.Users.AsNoTracking().Where(x => studentIds.Contains(x.Id))
+                .Select(x => new { x.Id, x.FullName, x.StudentCode, x.StudentPhone })
+                .ToDictionaryAsync(x => x.Id);
+            var groups = await db.TeachingGroups.AsNoTracking().Where(x => groupIds.Contains(x.Id))
+                .Select(x => new { x.Id, x.Name }).ToDictionaryAsync(x => x.Id, x => x.Name);
+            return Results.Ok(new
+            {
+                items = rows.Select(x =>
+                {
+                    students.TryGetValue(x.StudentId, out var student);
+                    groups.TryGetValue(x.GroupId, out var groupName);
+                    return new
+                    {
+                        x.Id, x.StudentId, StudentName = student?.FullName, StudentCode = student?.StudentCode,
+                        StudentPhone = student?.StudentPhone, x.GroupId, GroupName = groupName,
+                        x.Amount, x.CoverageType, x.SessionsCount, x.PeriodMonth, x.PeriodYear,
+                        x.Method, x.Reference, x.Notes, x.Status, x.ReviewNote,
+                        x.ReviewedAtUtc, x.PaymentId, x.CreatedAtUtc
+                    };
+                })
+            });
+        }).RequireAuthorization().RequireRateLimiting("api");
+
+        app.MapPost("/api/teaching/finance/payment-requests/{id:guid}/approve", async (Guid id, PaymentRequestReviewInput req, ClaimsPrincipal p, AppDbContext db) =>
+        {
+            var (scope, error) = await TeachingAccess.RequireAsync(db, p, TeachingPermissions.PaymentsManage);
+            if (error is not null) return error;
+            if (scope is null) return TeachingAccess.Deny();
+            var request = await db.GroupPaymentRequests.FirstOrDefaultAsync(x => x.Id == id && x.TeacherId == scope.TeacherId);
+            if (request is null) return TeachingAccess.NotFound("طلب الدفع غير موجود.");
+            if (request.Status != "Pending") return TeachingAccess.Bad("تمت مراجعة هذا الطلب بالفعل.");
+            var method = string.IsNullOrWhiteSpace(req.Method) ? request.Method : req.Method.Trim();
+            if (!new[] { "Cash", "VodafoneCash", "InstaPay", "BankTransfer", "Online" }.Contains(method))
+                return TeachingAccess.Bad("طريقة الدفع غير صالحة.");
+            var payment = new StudentPayment
+            {
+                TeacherId = scope.TeacherId, StudentId = request.StudentId, GroupId = request.GroupId,
+                Amount = request.Amount, Method = method,
+                CoverageType = request.CoverageType, SessionsCount = request.SessionsCount,
+                PeriodMonth = request.PeriodMonth, PeriodYear = request.PeriodYear,
+                Reference = request.Reference, Notes = request.Notes,
+                ReceiptNumber = GenerateReceiptNumber(), ReceivedByUserId = scope.UserId,
+                PaidAtUtc = DateTime.UtcNow
+            };
+            db.StudentPayments.Add(payment);
+            request.Status = "Approved";
+            request.ReviewNote = TeachingText.NullIfEmpty(req.Note);
+            request.ReviewedAtUtc = DateTime.UtcNow;
+            request.ReviewedByUserId = scope.UserId;
+            request.PaymentId = payment.Id;
+            request.UpdatedAtUtc = DateTime.UtcNow;
+            TeachingNotify.Audit(db, scope.TeacherId, scope.UserId, "payment.request.approved", "GroupPaymentRequest", id.ToString(), $"{request.Amount}");
+            await TeachingNotify.SendAsync(db, [request.StudentId], "Payment", "Payments",
+                "تم تأكيد دفعتك", $"{request.Amount:0.##} — إيصال {payment.ReceiptNumber}", "finance");
+            await db.SaveChangesAsync();
+            return Results.Ok(new { ok = true, paymentId = payment.Id, receiptNumber = payment.ReceiptNumber });
+        }).RequireAuthorization().RequireRateLimiting("api");
+
+        app.MapPost("/api/teaching/finance/payment-requests/{id:guid}/reject", async (Guid id, PaymentRequestReviewInput req, ClaimsPrincipal p, AppDbContext db) =>
+        {
+            var (scope, error) = await TeachingAccess.RequireAsync(db, p, TeachingPermissions.PaymentsManage);
+            if (error is not null) return error;
+            if (scope is null) return TeachingAccess.Deny();
+            var request = await db.GroupPaymentRequests.FirstOrDefaultAsync(x => x.Id == id && x.TeacherId == scope.TeacherId);
+            if (request is null) return TeachingAccess.NotFound("طلب الدفع غير موجود.");
+            if (request.Status != "Pending") return TeachingAccess.Bad("تمت مراجعة هذا الطلب بالفعل.");
+            request.Status = "Rejected";
+            request.ReviewNote = TeachingText.NullIfEmpty(req.Note);
+            request.ReviewedAtUtc = DateTime.UtcNow;
+            request.ReviewedByUserId = scope.UserId;
+            request.UpdatedAtUtc = DateTime.UtcNow;
+            TeachingNotify.Audit(db, scope.TeacherId, scope.UserId, "payment.request.rejected", "GroupPaymentRequest", id.ToString(), request.ReviewNote);
+            await TeachingNotify.SendAsync(db, [request.StudentId], "Payment", "Payments",
+                "تم رفض طلب الدفع", request.ReviewNote ?? "راجع معلمك لمعرفة السبب.", "finance");
+            await db.SaveChangesAsync();
+            return Results.Ok(new { ok = true });
+        }).RequireAuthorization().RequireRateLimiting("api");
+
+        app.MapGet("/api/teaching/my/payment-requests", async (ClaimsPrincipal p, AppDbContext db) =>
+        {
+            var userId = TeachingAccess.UserId(p);
+            if (userId is null || TeachingAccess.Role(p) != "Student") return TeachingAccess.Deny("هذا الإجراء للطلاب فقط.");
+            var rows = await db.GroupPaymentRequests.AsNoTracking()
+                .Where(x => x.StudentId == userId)
+                .OrderByDescending(x => x.CreatedAtUtc).Take(100).ToListAsync();
+            var groupIds = rows.Select(x => x.GroupId).Distinct().ToList();
+            var groups = await db.TeachingGroups.AsNoTracking().Where(x => groupIds.Contains(x.Id))
+                .Select(x => new { x.Id, x.Name }).ToDictionaryAsync(x => x.Id, x => x.Name);
+            var teacherIds = rows.Select(x => x.TeacherId).Distinct().ToList();
+            var teachers = await db.Users.AsNoTracking().Where(x => teacherIds.Contains(x.Id))
+                .Select(x => new { x.Id, x.FullName }).ToDictionaryAsync(x => x.Id, x => x.FullName);
+            var paymentIds = rows.Where(x => x.PaymentId != null).Select(x => x.PaymentId!.Value).Distinct().ToList();
+            var receipts = await db.StudentPayments.AsNoTracking().Where(x => paymentIds.Contains(x.Id))
+                .Select(x => new { x.Id, x.ReceiptNumber }).ToDictionaryAsync(x => x.Id, x => x.ReceiptNumber);
+            return Results.Ok(new
+            {
+                items = rows.Select(x => new
+                {
+                    x.Id, x.GroupId, GroupName = groups.GetValueOrDefault(x.GroupId),
+                    TeacherName = teachers.GetValueOrDefault(x.TeacherId),
+                    x.Amount, x.CoverageType, x.SessionsCount, x.PeriodMonth, x.PeriodYear,
+                    x.Method, x.Reference, x.Notes, x.Status, x.ReviewNote, x.ReviewedAtUtc,
+                    x.PaymentId, ReceiptNumber = x.PaymentId is null ? null : receipts.GetValueOrDefault(x.PaymentId.Value),
+                    x.CreatedAtUtc
+                })
+            });
+        }).RequireAuthorization().RequireRateLimiting("api");
+
+        app.MapPost("/api/teaching/my/payment-requests", async (PaymentRequestInput req, ClaimsPrincipal p, AppDbContext db) =>
+        {
+            var userId = TeachingAccess.UserId(p);
+            if (userId is null || TeachingAccess.Role(p) != "Student") return TeachingAccess.Deny("هذا الإجراء للطلاب فقط.");
+            if (req.Amount <= 0) return TeachingAccess.Bad("اكتب المبلغ الذي دفعته.");
+            var coverage = NormalizeCoverage(req.CoverageType, req.SessionsCount, req.PeriodMonth, req.PeriodYear, out var coverageError);
+            if (coverageError is not null) return TeachingAccess.Bad(coverageError);
+            if (coverage.Type is null) return TeachingAccess.Bad("حدد نوع الدفع: عدد حصص أو شهر.");
+            var method = string.IsNullOrWhiteSpace(req.Method) ? "Cash" : req.Method.Trim();
+            if (!new[] { "Cash", "VodafoneCash", "InstaPay", "BankTransfer", "Online" }.Contains(method))
+                return TeachingAccess.Bad("طريقة الدفع غير صالحة.");
+            var group = await db.TeachingGroups.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == req.GroupId && x.IsActive);
+            if (group is null) return TeachingAccess.NotFound("المجموعة غير موجودة.");
+            var isMember = await db.GroupMemberships.AsNoTracking()
+                .AnyAsync(x => x.GroupId == group.Id && x.StudentId == userId && x.Status == "Active");
+            if (!isMember) return TeachingAccess.Deny("أنت لست عضواً نشطاً في هذه المجموعة.");
+            if (await db.GroupPaymentRequests.AnyAsync(x => x.StudentId == userId && x.GroupId == group.Id && x.Status == "Pending"))
+                return TeachingAccess.Bad("لديك طلب دفع قيد المراجعة لهذه المجموعة. انتظر رد المدرس.");
+            var entity = new GroupPaymentRequest
+            {
+                TeacherId = group.TeacherId, StudentId = userId.Value, GroupId = group.Id,
+                Amount = req.Amount, CoverageType = coverage.Type!, SessionsCount = coverage.Sessions,
+                PeriodMonth = coverage.Month, PeriodYear = coverage.Year, Method = method,
+                Reference = TeachingText.NullIfEmpty(req.Reference), Notes = TeachingText.NullIfEmpty(req.Notes)
+            };
+            db.GroupPaymentRequests.Add(entity);
+            TeachingNotify.Audit(db, group.TeacherId, userId, "payment.request.created", "GroupPaymentRequest", entity.Id.ToString(), $"{entity.Amount}");
+            var coverageText = coverage.Type == "Month" ? $"شهر {coverage.Month}/{coverage.Year}" : $"{coverage.Sessions} حصة";
+            await TeachingNotify.SendAsync(db, [group.TeacherId], "Payment", "Payments",
+                "طلب دفع جديد", $"{group.Name} — {entity.Amount:0.##} ({coverageText})", "finance");
+            await db.SaveChangesAsync();
+            return Results.Ok(new { id = entity.Id });
         }).RequireAuthorization().RequireRateLimiting("api");
 
         // ------------------------------- exports ------------------------------
@@ -1347,6 +1510,33 @@ public static class TeachingFinanceEndpoints
     internal static string GenerateReceiptNumber() =>
         $"RCPT-{DateTime.UtcNow:yyyyMMddHHmmss}-{Convert.ToHexString(RandomNumberGenerator.GetBytes(3))}";
 
+    private static (string? Type, int? Sessions, int? Month, int? Year) NormalizeCoverage(
+        string? type, int? sessions, int? month, int? year, out string? error)
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(type)) return (null, null, null, null);
+        if (type.Trim() == "Sessions")
+        {
+            if (sessions is not (> 0 and <= 200))
+            {
+                error = "عدد الحصص يجب أن يكون بين 1 و200.";
+                return (null, null, null, null);
+            }
+            return ("Sessions", sessions, null, null);
+        }
+        if (type.Trim() == "Month")
+        {
+            if (month is not (>= 1 and <= 12) || year is not (>= 2000 and <= 2100))
+            {
+                error = "حدد الشهر والسنة بشكل صحيح.";
+                return (null, null, null, null);
+            }
+            return ("Month", null, month, year);
+        }
+        error = "نوع التغطية غير صالح.";
+        return (null, null, null, null);
+    }
+
     private static async Task<(List<(string Type, Guid Id)> Items, string? Error)> ValidatePackageItemsAsync(
         AppDbContext db, Guid teacherId, IEnumerable<PackageItemInput>? requested)
     {
@@ -1399,7 +1589,11 @@ public sealed record ChargeInput(Guid StudentId, decimal Amount, Guid? GroupId, 
     Guid? PackageId, Guid? SessionId, string? Kind, DateTime? DueDateUtc, string? Description, string? DedupeKey);
 
 public sealed record PaymentInput(Guid StudentId, decimal Amount, string? Method, string? Reference,
-    string? Notes, Guid? GroupId, Guid? CourseId, Guid? PackageId, Guid? ChargeId, DateTime? PaidAtUtc);
+    string? Notes, Guid? GroupId, Guid? CourseId, Guid? PackageId, Guid? ChargeId, DateTime? PaidAtUtc,
+    string? CoverageType = null, int? SessionsCount = null, int? PeriodMonth = null, int? PeriodYear = null);
 
 public sealed record AdjustmentInput(Guid StudentId, decimal Amount, string Kind, string Reason, Guid? GroupId);
 public sealed record BillingGenerateInput(string? Month);
+public sealed record PaymentRequestInput(Guid GroupId, decimal Amount, string? CoverageType,
+    int? SessionsCount, int? PeriodMonth, int? PeriodYear, string? Method, string? Reference, string? Notes);
+public sealed record PaymentRequestReviewInput(string? Method = null, string? Note = null);

@@ -347,10 +347,22 @@ public static class TeachingGroupEndpoints
             if (membership is null) return TeachingAccess.NotFound("العضوية غير موجودة.");
             if (!new[] { "Active", "Suspended", "Left" }.Contains(req.Status))
                 return TeachingAccess.Bad("حالة العضوية غير صالحة.");
+            var previous = membership.Status;
             membership.Status = req.Status;
             membership.SuspendedAtUtc = req.Status == "Suspended" ? DateTime.UtcNow : null;
             membership.Note = TeachingText.NullIfEmpty(req.Note);
             membership.UpdatedAtUtc = DateTime.UtcNow;
+            if (req.Status == "Active" && previous != "Active")
+            {
+                await TeachingNotify.SendAsync(db, [studentId], "Group", "System",
+                    previous == "Pending" ? "تم قبول انضمامك للمجموعة" : "تم تفعيل عضويتك في المجموعة",
+                    group.Name, "groups");
+            }
+            else if (req.Status == "Left" && previous == "Pending")
+            {
+                await TeachingNotify.SendAsync(db, [studentId], "Group", "System",
+                    "لم يتم قبول طلب الانضمام", group.Name, "groups");
+            }
             TeachingNotify.Audit(db, scope.TeacherId, scope.UserId, "group.member." + req.Status.ToLowerInvariant(), "GroupMembership", membership.Id.ToString());
             await db.SaveChangesAsync();
             return Results.Ok(new { ok = true });
@@ -836,24 +848,66 @@ public static class TeachingGroupEndpoints
             var group = await db.TeachingGroups.AsNoTracking().FirstOrDefaultAsync(x => x.Id == session.GroupId);
             if (group is null) return TeachingAccess.NotFound("المجموعة غير موجودة.");
             var now = DateTime.UtcNow;
+            if (now < session.StartsAtUtc.AddMinutes(-15) || now > session.EndsAtUtc)
+                return TeachingAccess.Bad("رمز الحضور يُفتح في وقت الحصة فقط.");
             var active = await db.AttendanceQrTokens
                 .Where(x => x.SessionId == id && x.RevokedAtUtc == null && x.ExpiresAtUtc > now)
                 .ToListAsync();
             foreach (var old in active) old.RevokedAtUtc = now;
             var raw = Convert.ToHexString(RandomNumberGenerator.GetBytes(20)).ToLowerInvariant();
             var minutes = Math.Clamp(group.QrValidityMinutes, 1, 30);
+            var expiresAt = now.AddMinutes(minutes);
+            if (expiresAt > session.EndsAtUtc) expiresAt = session.EndsAtUtc;
             var token = new AttendanceQrToken
             {
                 TeacherId = scope.TeacherId, SessionId = id,
                 TokenHash = TeachingMediaTokens.HashQrToken(raw),
-                ExpiresAtUtc = now.AddMinutes(minutes),
+                ExpiresAtUtc = expiresAt,
                 CreatedByUserId = scope.UserId
             };
             db.AttendanceQrTokens.Add(token);
             session.AttendanceOpenedAtUtc ??= now;
             TeachingNotify.Audit(db, scope.TeacherId, scope.UserId, "attendance.qr.issued", "GroupSession", id.ToString(), minutes + "m");
             await db.SaveChangesAsync();
-            return Results.Ok(new { token = raw, expiresAtUtc = token.ExpiresAtUtc, validityMinutes = minutes });
+            return Results.Ok(new { token = raw, expiresAtUtc = token.ExpiresAtUtc, validityMinutes = minutes, sessionTitle = session.Title, startsAtUtc = session.StartsAtUtc, endsAtUtc = session.EndsAtUtc });
+        }).RequireAuthorization().RequireRateLimiting("api");
+
+        // One-tap group QR: resolves the live session for the group and issues a token
+        // that can never outlive that session.
+        app.MapPost("/api/teaching/groups/{id:guid}/attendance/qr", async (Guid id, ClaimsPrincipal p, AppDbContext db) =>
+        {
+            var (scope, error) = await TeachingAccess.RequireAsync(db, p, TeachingPermissions.AttendanceManage);
+            if (error is not null) return error;
+            if (scope is null) return TeachingAccess.Deny();
+            var group = await TeachingAccess.GetGroupAsync(db, scope!, id);
+            if (group is null) return TeachingAccess.NotFound("المجموعة غير موجودة.");
+            if (!scope!.CanAccessGroup(id)) return TeachingAccess.Deny();
+            var now = DateTime.UtcNow;
+            var session = await db.GroupSessions
+                .Where(x => x.GroupId == id && x.Status != "Cancelled"
+                    && x.StartsAtUtc <= now.AddMinutes(15) && x.EndsAtUtc >= now)
+                .OrderBy(x => x.StartsAtUtc)
+                .FirstOrDefaultAsync();
+            if (session is null) return TeachingAccess.Bad("لا توجد حصة جارية الآن. افتح رمز الحضور في وقت الحصة.");
+            var active = await db.AttendanceQrTokens
+                .Where(x => x.SessionId == session.Id && x.RevokedAtUtc == null && x.ExpiresAtUtc > now)
+                .ToListAsync();
+            foreach (var old in active) old.RevokedAtUtc = now;
+            var raw = Convert.ToHexString(RandomNumberGenerator.GetBytes(20)).ToLowerInvariant();
+            var minutes = Math.Clamp(group.QrValidityMinutes, 1, 30);
+            var expiresAt = now.AddMinutes(minutes);
+            if (expiresAt > session.EndsAtUtc) expiresAt = session.EndsAtUtc;
+            db.AttendanceQrTokens.Add(new AttendanceQrToken
+            {
+                TeacherId = scope.TeacherId, SessionId = session.Id,
+                TokenHash = TeachingMediaTokens.HashQrToken(raw),
+                ExpiresAtUtc = expiresAt,
+                CreatedByUserId = scope.UserId
+            });
+            session.AttendanceOpenedAtUtc ??= now;
+            TeachingNotify.Audit(db, scope.TeacherId, scope.UserId, "attendance.qr.issued", "GroupSession", session.Id.ToString(), "group");
+            await db.SaveChangesAsync();
+            return Results.Ok(new { token = raw, sessionId = session.Id, sessionTitle = session.Title, expiresAtUtc = expiresAt, validityMinutes = minutes, startsAtUtc = session.StartsAtUtc, endsAtUtc = session.EndsAtUtc });
         }).RequireAuthorization().RequireRateLimiting("api");
 
         // Student redeems the QR token. A teacher-side raw token is never stored.
@@ -872,6 +926,8 @@ public static class TeachingGroupEndpoints
             if (token is null) return TeachingAccess.Bad("رمز الحضور غير صالح أو انتهت صلاحيته.");
             var session = await db.GroupSessions.FirstOrDefaultAsync(x => x.Id == token.SessionId && x.TeacherId == token.TeacherId);
             if (session is null || session.Status == "Cancelled") return TeachingAccess.Bad("الحصة غير متاحة.");
+            if (now < session.StartsAtUtc.AddMinutes(-15) || now > session.EndsAtUtc)
+                return TeachingAccess.Bad("تسجيل الحضور بـQR متاح أثناء وقت الحصة فقط.");
             if (session.AttendanceClosedAtUtc is not null) return TeachingAccess.Bad("تم إغلاق تسجيل الحضور لهذه الحصة.");
             var isMember = await db.GroupMemberships.AsNoTracking()
                 .AnyAsync(x => x.GroupId == session.GroupId && x.StudentId == userId && x.Status == "Active");
@@ -1001,9 +1057,9 @@ public static class TeachingGroupEndpoints
             var userId = TeachingAccess.UserId(p);
             if (userId is null || TeachingAccess.Role(p) != "Student") return TeachingAccess.Deny("هذا الإجراء للطلاب فقط.");
             var memberships = await db.GroupMemberships.AsNoTracking()
-                .Where(x => x.StudentId == userId && x.Status == "Active")
+                .Where(x => x.StudentId == userId && x.Status != "Left")
                 .Join(db.TeachingGroups.AsNoTracking(), m => m.GroupId, g => g.Id,
-                    (m, g) => new { m.JoinedAtUtc, Group = g })
+                    (m, g) => new { m.Status, m.JoinedAtUtc, Group = g })
                 .OrderBy(x => x.Group.Name)
                 .ToListAsync();
             var groupIds = memberships.Select(x => x.Group.Id).ToList();
@@ -1031,7 +1087,7 @@ public static class TeachingGroupEndpoints
                     {
                         m.Group.Id, m.Group.Name, m.Group.Subject, m.Group.Stage, m.Group.Grade,
                         m.Group.DeliveryMode, m.Group.Location, m.Group.OnlineLink,
-                        TeacherName = teacherName, m.JoinedAtUtc,
+                        TeacherName = teacherName, m.JoinedAtUtc, m.Status,
                         NextSessionAtUtc = session?.StartsAtUtc, NextSessionTitle = session?.Title,
                         ChatConversationId = chatId == Guid.Empty ? (Guid?)null : chatId
                     };

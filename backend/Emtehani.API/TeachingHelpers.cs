@@ -307,6 +307,11 @@ public static class TeachingMediaFiles
         [".txt"] = ("Document", "text/plain"),
         [".csv"] = ("Document", "text/csv"),
         [".rtf"] = ("Document", "application/rtf"),
+        [".jpg"] = ("Image", "image/jpeg"),
+        [".jpeg"] = ("Image", "image/jpeg"),
+        [".png"] = ("Image", "image/png"),
+        [".webp"] = ("Image", "image/webp"),
+        [".heic"] = ("Image", "image/heic"),
     };
 
     public static (string Kind, string Mime)? Describe(string fileName)
@@ -335,6 +340,10 @@ public static class TeachingMediaFiles
                 && ((h[2] == 0x03 && h[3] == 0x04) || (h[2] == 0x05 && h[3] == 0x06)),
             ".doc" or ".ppt" or ".xls" => h.Length >= 8 && h[0] == 0xD0 && h[1] == 0xCF && h[2] == 0x11 && h[3] == 0xE0,
             ".rtf" => At(h, 0, "{\\rtf"),
+            ".jpg" or ".jpeg" => h.Length >= 3 && h[0] == 0xFF && h[1] == 0xD8 && h[2] == 0xFF,
+            ".png" => h.Length >= 4 && h[0] == 0x89 && h[1] == 0x50 && h[2] == 0x4E && h[3] == 0x47,
+            ".webp" => At(h, 0, "RIFF") && At(h, 8, "WEBP"),
+            ".heic" => At(h, 4, "ftyp") && (At(h, 8, "heic") || At(h, 8, "heix") || At(h, 8, "mif1")),
             ".txt" or ".csv" => true,
             _ => false,
         };

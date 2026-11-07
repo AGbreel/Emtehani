@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle, ArrowDownCircle, ArrowUpCircle, BadgePercent, Banknote, CalendarClock,
-  CheckCircle2, Coins, Download, FileSpreadsheet, HandCoins, Layers, PackagePlus,
+  CheckCircle2, ClipboardCheck, Coins, Download, FileSpreadsheet, HandCoins, Layers, PackagePlus,
   Pencil, Plus, Receipt, RefreshCw, Search, ShieldAlert, TicketPercent, Trash2, TrendingUp,
   UserRoundSearch, Users, Wallet, XCircle,
 } from 'lucide-react';
@@ -23,6 +23,7 @@ const tabs = [
   { value: 'overview', label: 'نظرة عامة' },
   { value: 'charges', label: 'المستحقات' },
   { value: 'payments', label: 'المدفوعات' },
+  { value: 'requests', label: 'طلبات الدفع' },
   { value: 'adjustments', label: 'التسويات' },
   { value: 'packages', label: 'الباقات' },
   { value: 'coupons', label: 'الكوبونات' },
@@ -63,7 +64,10 @@ const packageKinds = [
 ];
 
 const emptyCharge = { studentId: '', amount: '', kind: 'Manual', dueDate: todayIso(), description: '', groupId: '' };
-const emptyPayment = { studentId: '', amount: '', method: 'Cash', reference: '', notes: '', chargeId: '' };
+const emptyPayment = {
+  studentId: '', amount: '', method: 'Cash', reference: '', notes: '', chargeId: '', groupId: '',
+  coverageType: '', sessionsCount: '', periodMonth: new Date().getMonth() + 1, periodYear: new Date().getFullYear(),
+};
 const emptyAdjustment = { studentId: '', amount: '', kind: 'Discount', reason: '' };
 const emptyPackage = {
   name: '', description: '', kind: 'Course', price: 0, oldPrice: '', durationDays: 30,
@@ -105,6 +109,8 @@ export default function TeachingFinancePage({ token }) {
   const [charges, setCharges] = useState({ items: [], total: 0, page: 1, pageSize: 25 });
   const [chargeState, setChargeState] = useState('');
   const [payments, setPayments] = useState({ items: [], total: 0, page: 1, pageSize: 25 });
+  const [paymentRequests, setPaymentRequests] = useState([]);
+  const [requestFilter, setRequestFilter] = useState('Pending');
   const [adjustments, setAdjustments] = useState([]);
   const [packages, setPackages] = useState([]);
   const [coupons, setCoupons] = useState([]);
@@ -154,6 +160,11 @@ export default function TeachingFinancePage({ token }) {
     setPayments({ items: data?.items || [], total: data?.total || 0, page: data?.page || 1, pageSize: data?.pageSize || 25 });
   }, [token, range.from, range.to, query]);
 
+  const loadPaymentRequests = useCallback(async (status = 'Pending') => {
+    const data = await request(`/api/teaching/finance/payment-requests${query({ status })}`, { token });
+    setPaymentRequests(data?.items || []);
+  }, [token, query]);
+
   const loadAdjustments = useCallback(async () => {
     const data = await request('/api/teaching/finance/adjustments', { token });
     setAdjustments(data?.items || []);
@@ -176,9 +187,9 @@ export default function TeachingFinancePage({ token }) {
     setLoading(true);
     setError('');
     try {
-      await Promise.all([loadOverview(), loadPackages(), loadCharges(), loadPayments(), loadAdjustments()]);
+      await Promise.all([loadOverview(), loadPackages(), loadCharges(), loadPayments(), loadAdjustments(), loadPaymentRequests()]);
     } catch (err) { setError(err.message); } finally { setLoading(false); }
-  }, [loadOverview, loadPackages, loadCharges, loadPayments, loadAdjustments]);
+  }, [loadOverview, loadPackages, loadCharges, loadPayments, loadAdjustments, loadPaymentRequests]);
 
   useEffect(() => { initialLoad(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
@@ -188,6 +199,7 @@ export default function TeachingFinancePage({ token }) {
       try {
         if (tab === 'charges') await loadCharges(1);
         else if (tab === 'payments') await loadPayments(1);
+        else if (tab === 'requests') await loadPaymentRequests(requestFilter);
         else if (tab === 'adjustments') await loadAdjustments();
         else if (tab === 'packages' || tab === 'coupons') await loadPackages();
         else if (tab === 'overview') await loadOverview();
@@ -195,7 +207,7 @@ export default function TeachingFinancePage({ token }) {
     };
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, chargeState]);
+  }, [tab, chargeState, requestFilter]);
 
   const stats = summary?.range || {};
   const debtors = summary?.debtors || [];
@@ -251,6 +263,7 @@ export default function TeachingFinancePage({ token }) {
     setModalError('');
     if (!form.studentId) return setModalError('اختر الطالب.');
     if (!(Number(form.amount) > 0)) return setModalError('قيمة الدفعة يجب أن تكون أكبر من صفر.');
+    if (form.coverageType === 'Sessions' && !(Number(form.sessionsCount) > 0)) return setModalError('حدد عدد الحصص المدفوعة.');
     setBusy('payment');
     try {
       const result = await request('/api/teaching/finance/payments', {
@@ -262,12 +275,30 @@ export default function TeachingFinancePage({ token }) {
           reference: form.reference || null,
           notes: form.notes || null,
           chargeId: form.chargeId || null,
+          groupId: form.groupId || null,
+          coverageType: form.coverageType || null,
+          sessionsCount: form.coverageType === 'Sessions' ? Number(form.sessionsCount) || null : null,
+          periodMonth: form.coverageType === 'Month' ? Number(form.periodMonth) || null : null,
+          periodYear: form.coverageType === 'Month' ? Number(form.periodYear) || null : null,
         }),
       });
       closeModal();
       flash(`تم تسجيل الدفعة — إيصال ${result?.receiptNumber || ''}`);
       await Promise.all([loadPayments(1), loadCharges(1), loadOverview()]);
     } catch (err) { setModalError(err.message); } finally { setBusy(''); }
+  }
+
+  async function reviewPaymentRequest(requestId, approve) {
+    const note = window.prompt(approve ? 'ملاحظة على القبول (اختياري):' : 'سبب رفض الطلب:');
+    if (note === null) return;
+    setBusy(`request-${requestId}`);
+    try {
+      await request(`/api/teaching/finance/payment-requests/${requestId}/${approve ? 'approve' : 'reject'}`, {
+        token, method: 'POST', body: JSON.stringify({ note: note.trim() || null }),
+      });
+      flash(approve ? 'تم تأكيد الدفعة وإشعار الطالب.' : 'تم رفض الطلب وإشعار الطالب.');
+      await Promise.all([loadPaymentRequests(requestFilter), loadPayments(1), loadOverview()]);
+    } catch (err) { setError(err.message); } finally { setBusy(''); }
   }
 
   async function submitAdjustment() {
@@ -669,6 +700,56 @@ export default function TeachingFinancePage({ token }) {
         </Card>
       ) : null}
 
+      {tab === 'requests' ? (
+        <Card className="overflow-hidden">
+          <div className="flex flex-wrap items-center gap-2 border-b border-line/70 p-4">
+            <h3 className="me-auto font-display text-[15px] font-semibold text-ink">طلبات دفع المجموعات</h3>
+            <div className="w-44">
+              <Select value={requestFilter} onChange={(e) => setRequestFilter(e.target.value)}>
+                <option value="Pending">بانتظار المراجعة</option>
+                <option value="Approved">مقبولة</option>
+                <option value="Rejected">مرفوضة</option>
+                <option value="">الكل</option>
+              </Select>
+            </div>
+            <Button variant="soft" size="sm" icon={RefreshCw} onClick={() => loadPaymentRequests(requestFilter)}>تحديث</Button>
+          </div>
+          {paymentRequests.length === 0 ? (
+            <EmptyState icon={ClipboardCheck} title="لا توجد طلبات" description="حين يرسل الطالب إقراراً بدفع مجموعة سيظهر هنا لتأكيده." />
+          ) : (
+            <div className="grid gap-2 p-4">
+              {paymentRequests.map((item) => (
+                <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface-soft p-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="text-[12.5px] font-bold text-ink">{item.studentName || 'طالب'}</p>
+                      <Badge tone={item.status === 'Approved' ? 'success' : item.status === 'Rejected' ? 'danger' : 'warning'}>
+                        {item.status === 'Approved' ? 'مقبول' : item.status === 'Rejected' ? 'مرفوض' : 'قيد المراجعة'}
+                      </Badge>
+                      <Badge tone="neutral">{item.groupName || 'مجموعة'}</Badge>
+                    </div>
+                    <p className="mt-1 text-[11.5px] text-muted">
+                      {money(item.amount)} · {item.coverageType === 'Sessions' ? `${formatNumber(item.sessionsCount || 0)} حصة` : `شهر ${item.periodMonth}/${item.periodYear}`} · {methodLabels[item.method] || item.method}
+                    </p>
+                    <p className="mt-0.5 text-[10.5px] text-subtle">
+                      {formatDate(item.createdAtUtc)}
+                      {item.notes ? ` · ${item.notes}` : ''}
+                      {item.reviewNote ? ` · ملاحظة المدرس: ${item.reviewNote}` : ''}
+                    </p>
+                  </div>
+                  {item.status === 'Pending' ? (
+                    <div className="flex gap-1.5">
+                      <Button size="xs" icon={CheckCircle2} loading={busy === `request-${item.id}`} onClick={() => reviewPaymentRequest(item.id, true)}>تأكيد الدفع</Button>
+                      <Button size="xs" variant="ghost" onClick={() => reviewPaymentRequest(item.id, false)}>رفض</Button>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      ) : null}
+
       {tab === 'adjustments' ? (
         <Card className="overflow-hidden">
           <div className="flex items-center justify-between gap-2 border-b border-line/70 p-4">
@@ -830,6 +911,38 @@ export default function TeachingFinancePage({ token }) {
               </Field>
               <Field label="المرجع / رقم العملية"><Input value={form.reference} onChange={(e) => setForm((p) => ({ ...p, reference: e.target.value }))} /></Field>
               <Field label="ملاحظات"><Input value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} /></Field>
+              <Field label="المجموعة (اختياري)">
+                <Select value={form.groupId || ''} onChange={(e) => setForm((p) => ({ ...p, groupId: e.target.value }))}>
+                  <option value="">بدون مجموعة</option>
+                  {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+                </Select>
+              </Field>
+              <Field label="نوع التغطية">
+                <Select value={form.coverageType || ''} onChange={(e) => setForm((p) => ({ ...p, coverageType: e.target.value }))}>
+                  <option value="">دفعة عامة</option>
+                  <option value="Sessions">عدد حصص</option>
+                  <option value="Month">شهر</option>
+                </Select>
+              </Field>
+              {form.coverageType === 'Sessions' ? (
+                <Field label="عدد الحصص المدفوعة"><Input type="number" min="1" max="200" value={form.sessionsCount || ''} onChange={(e) => setForm((p) => ({ ...p, sessionsCount: e.target.value }))} /></Field>
+              ) : null}
+              {form.coverageType === 'Month' ? (
+                <>
+                  <Field label="الشهر">
+                    <Select value={form.periodMonth} onChange={(e) => setForm((p) => ({ ...p, periodMonth: e.target.value }))}>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
+                        <option key={month} value={month}>{new Date(2024, month - 1, 1).toLocaleDateString('ar-EG', { month: 'long' })}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="السنة">
+                    <Select value={form.periodYear} onChange={(e) => setForm((p) => ({ ...p, periodYear: e.target.value }))}>
+                      {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 1 + i).map((year) => <option key={year} value={year}>{year}</option>)}
+                    </Select>
+                  </Field>
+                </>
+              ) : null}
             </div>
           </div>
         </Modal>

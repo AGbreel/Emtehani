@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
+import QRCode from 'qrcode';
 import {
   BookOpen, CalendarPlus, CalendarDays, CheckCircle2, ClipboardCheck, Clock3, FileText,
   GraduationCap, MessageCircle, Pencil, Plus, QrCode, RefreshCw, Search, Settings2,
@@ -9,7 +10,7 @@ import {
   Alert, Badge, Button, Card, EmptyState, Field, IconButton, Input, Modal,
   PageHeader, Select, Skeleton, StatCard, Textarea, cn,
 } from '../components/ui';
-import { request } from '../lib/api';
+import { assetUrl, request } from '../lib/api';
 import { EDUCATION_STAGES, SUBJECT_SUGGESTIONS, academicYearOptions, currentAcademicYear, gradesForStage } from '../lib/education';
 import { formatDate, formatNumber } from '../lib/format';
 
@@ -176,6 +177,8 @@ export default function TeachingGroupsPage({ token, onOpenChat }) {
   const [attendanceSession, setAttendanceSession] = useState(null);
   const [attendanceItems, setAttendanceItems] = useState([]);
   const [attendanceBusy, setAttendanceBusy] = useState(false);
+  const [qrModal, setQrModal] = useState(null);
+  const [qrBusy, setQrBusy] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleForm, setScheduleForm] = useState({ dayOfWeek: 6, startTime: '18:00', endTime: '19:30', location: '' });
   const [homework, setHomework] = useState([]);
@@ -252,6 +255,17 @@ export default function TeachingGroupsPage({ token, onOpenChat }) {
       await request(`/api/teaching/groups/${activeId}/members/${studentId}`, { token, method: 'DELETE' });
       await loadDetail(activeId, true);
     } catch (err) { setError(err.message); }
+  }
+
+  async function setMemberStatus(studentId, status, note = null) {
+    setBusy(`member-${studentId}`);
+    try {
+      await request(`/api/teaching/groups/${activeId}/members/${studentId}`, {
+        token, method: 'PUT', body: JSON.stringify({ status, note }),
+      });
+      setNotice(status === 'Active' ? 'تم قبول الطالب وإشعاره.' : status === 'Left' ? 'تم رفض الطلب.' : 'تم تحديث حالة العضوية.');
+      await loadDetail(activeId, true);
+    } catch (err) { setError(err.message); } finally { setBusy(''); }
   }
 
   async function linkCourse(courseId) {
@@ -404,6 +418,18 @@ export default function TeachingGroupsPage({ token, onOpenChat }) {
     } catch (err) { setError(err.message); } finally { setAttendanceBusy(false); }
   }
 
+  async function openGroupQr() {
+    setQrBusy(true); setError('');
+    try {
+      const result = await request(`/api/teaching/groups/${activeId}/attendance/qr`, { token, method: 'POST' });
+      const dataUrl = await QRCode.toDataURL(result.token, {
+        margin: 1, width: 420,
+        color: { dark: '#0b3d2e', light: '#ffffff' },
+      });
+      setQrModal({ ...result, dataUrl });
+    } catch (err) { setError(err.message); } finally { setQrBusy(false); }
+  }
+
   async function createHomework() {
     setModalBusy(true); setModalError('');
     try {
@@ -456,6 +482,7 @@ export default function TeachingGroupsPage({ token, onOpenChat }) {
           action={<>
             <Button variant="secondary" size="sm" onClick={() => setActiveId(null)}>كل المجموعات</Button>
             {group.chatConversationId ? <Button variant="secondary" size="sm" icon={MessageCircle} onClick={() => onOpenChat?.()}>المحادثة</Button> : null}
+            <Button variant="secondary" size="sm" icon={QrCode} loading={qrBusy} onClick={openGroupQr}>رمز الحضور</Button>
             <Button variant="secondary" size="sm" icon={Pencil} onClick={() => { setEditing(group); setFormOpen(true); }}>تعديل</Button>
             <Button size="sm" icon={CalendarPlus} onClick={openNewSession}>حصة جديدة</Button>
           </>} />
@@ -514,7 +541,11 @@ export default function TeachingGroupsPage({ token, onOpenChat }) {
         {tab === 'members' ? (
           <Card className="p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-[13.5px] font-bold">أعضاء المجموعة</h2>
+              <h2 className="text-[13.5px] font-bold">أعضاء المجموعة
+                {(group.members || []).some((m) => m.status === 'Pending') ? (
+                  <Badge tone="warning" className="ms-2">{(group.members || []).filter((m) => m.status === 'Pending').length} طلب انضمام</Badge>
+                ) : null}
+              </h2>
               <Select className="h-9 w-56" defaultValue="" onChange={(e) => { if (e.target.value) addMember(e.target.value); e.target.value = ''; }}>
                 <option value="">إضافة طالب...</option>
                 {students.filter((s) => !(group.members || []).some((m) => m.studentId === (s.studentId || s.id) && m.status !== 'Left')).map((s) => (
@@ -524,27 +555,31 @@ export default function TeachingGroupsPage({ token, onOpenChat }) {
             </div>
             {(group.members || []).length === 0 ? <EmptyState icon={UserPlus} title="لا يوجد أعضاء بعد" description="أضف طلابًا مرتبطين بحسابك من القائمة أعلى." /> : (
               <div className="grid gap-2">
-                {group.members.map((member) => (
-                  <div key={member.studentId} className="flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-line bg-surface-soft p-3">
-                    <div>
-                      <p className="text-[12.5px] font-bold">{member.name}</p>
-                      <p className="text-[10.5px] text-muted">{member.studentCode || '—'} · {member.studentPhone || 'بدون هاتف'}</p>
+                {group.members.map((member) => {
+                  const pending = member.status === 'Pending';
+                  return (
+                    <div key={member.studentId} className={cn('flex flex-wrap items-center justify-between gap-2 rounded-[12px] border p-3', pending ? 'border-warning/40 bg-warning-soft/40' : 'border-line bg-surface-soft')}>
+                      <div>
+                        <p className="text-[12.5px] font-bold">{member.name}</p>
+                        <p className="text-[10.5px] text-muted">{member.studentCode || '—'} · {member.studentPhone || 'بدون هاتف'}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge tone={member.status === 'Active' ? 'emerald' : member.status === 'Pending' ? 'warning' : member.status === 'Suspended' ? 'warning' : 'neutral'}>
+                          {member.status === 'Active' ? 'نشط' : member.status === 'Pending' ? 'بانتظار الموافقة' : member.status === 'Suspended' ? 'موقوف' : 'غادر'}
+                        </Badge>
+                        {pending ? (
+                          <>
+                            <Button size="xs" icon={CheckCircle2} loading={busy === `member-${member.studentId}`} onClick={() => setMemberStatus(member.studentId, 'Active', member.note)}>قبول</Button>
+                            <Button size="xs" variant="ghost" onClick={() => setMemberStatus(member.studentId, 'Left')}>رفض</Button>
+                          </>
+                        ) : (
+                          <Button size="xs" variant="ghost" loading={busy === `member-${member.studentId}`} onClick={() => setMemberStatus(member.studentId, member.status === 'Active' ? 'Suspended' : 'Active', member.note)}>{member.status === 'Active' ? 'إيقاف' : 'تفعيل'}</Button>
+                        )}
+                        <IconButton label="إزالة" onClick={() => removeMember(member.studentId)}><Trash2 size={14} /></IconButton>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <Badge tone={member.status === 'Active' ? 'emerald' : member.status === 'Suspended' ? 'warning' : 'neutral'}>{member.status === 'Active' ? 'نشط' : member.status === 'Suspended' ? 'موقوف' : 'غادر'}</Badge>
-                      <Button size="xs" variant="ghost" onClick={async () => {
-                        try {
-                          await request(`/api/teaching/groups/${activeId}/members/${member.studentId}`, {
-                            token, method: 'PUT',
-                            body: JSON.stringify({ status: member.status === 'Active' ? 'Suspended' : 'Active', note: member.note || null }),
-                          });
-                          await loadDetail(activeId, true);
-                        } catch (err) { setError(err.message); }
-                      }}>{member.status === 'Active' ? 'إيقاف' : 'تفعيل'}</Button>
-                      <IconButton label="إزالة" onClick={() => removeMember(member.studentId)}><Trash2 size={14} /></IconButton>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </Card>
@@ -749,7 +784,7 @@ export default function TeachingGroupsPage({ token, onOpenChat }) {
                         </div>
                       </div>
                       {submission.answerText ? <p className="mt-2 whitespace-pre-line text-[11.5px] leading-6">{submission.answerText}</p> : null}
-                      {submission.attachmentUrl ? <a href={submission.attachmentUrl} target="_blank" rel="noreferrer" className="mt-1 inline-block text-[10.5px] font-bold text-primary">المرفق</a> : null}
+                      {submission.attachmentUrl ? <a href={assetUrl(submission.attachmentUrl)} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 text-[10.5px] font-bold text-primary"><FileText size={11} />فتح مرفق الطالب</a> : null}
                     </div>
                   ))}
                 </div>
@@ -765,6 +800,18 @@ export default function TeachingGroupsPage({ token, onOpenChat }) {
             <Field label={`الدرجة من ${homeworkDetail?.maxPoints || 10}`}><Input type="number" min="0" value={gradeForm.grade} onChange={(e) => setGradeForm((p) => ({ ...p, grade: e.target.value }))} /></Field>
             <Field label="ملاحظات"><Textarea value={gradeForm.feedback} onChange={(e) => setGradeForm((p) => ({ ...p, feedback: e.target.value }))} className="min-h-20" /></Field>
           </div>
+        </Modal>
+        <Modal open={Boolean(qrModal)} onClose={() => setQrModal(null)} icon={QrCode} title="رمز حضور المجموعة" description="اعرض الرمز للطلاب أثناء وقت الحصة فقط." size="sm"
+          footer={<Button onClick={() => setQrModal(null)}>تم</Button>}>
+          {qrModal ? (
+            <div className="grid gap-3 text-center">
+              <img src={qrModal.dataUrl} alt="QR الحضور" className="mx-auto w-full max-w-[260px] rounded-2xl border border-line bg-white p-2" />
+              <p className="text-[13px] font-bold text-ink">{qrModal.sessionTitle || 'حصة المجموعة'}</p>
+              <p className="text-[11px] text-muted">صالح حتى {formatDate(qrModal.expiresAtUtc)}</p>
+              <Alert tone="info">الرمز مرتبط بالحصة الحالية وينتهي تلقائياً بانتهائها. اطلب من الطلاب مسحه من صفحة «مجموعاتي».</Alert>
+              <p className="select-all break-all rounded-lg border border-line bg-surface-soft px-2 py-1.5 text-[10px] text-subtle" dir="ltr">{qrModal.token}</p>
+            </div>
+          ) : null}
         </Modal>
         {detailLoading ? <div className="fixed inset-0 z-40 grid place-items-center bg-[rgba(3,7,18,.3)]"><Skeleton className="size-14 rounded-full" /></div> : null}
       </div>

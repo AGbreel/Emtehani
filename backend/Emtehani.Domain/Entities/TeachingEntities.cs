@@ -438,6 +438,11 @@ public sealed class StudentPayment
     public string? Reference { get; set; }
     public string? Notes { get; set; }
     public string ReceiptNumber { get; set; } = "";
+    /// <summary>Sessions or Month; null for course/package/manual payments.</summary>
+    public string? CoverageType { get; set; }
+    public int? SessionsCount { get; set; }
+    public int? PeriodMonth { get; set; }
+    public int? PeriodYear { get; set; }
     public Guid? ReceivedByUserId { get; set; }
     public DateTime PaidAtUtc { get; set; } = DateTime.UtcNow;
     public bool IsVoid { get; set; }
@@ -445,9 +450,35 @@ public sealed class StudentPayment
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 }
 
-public sealed class FinancialAdjustment
+/// <summary>A student-declared group payment awaiting teacher confirmation.</summary>
+public sealed class GroupPaymentRequest
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid TeacherId { get; set; }
+    public Guid StudentId { get; set; }
+    public Guid GroupId { get; set; }
+    public decimal Amount { get; set; }
+    /// <summary>Sessions or Month.</summary>
+    public string CoverageType { get; set; } = "Month";
+    public int? SessionsCount { get; set; }
+    public int? PeriodMonth { get; set; }
+    public int? PeriodYear { get; set; }
+    /// <summary>Cash, VodafoneCash, InstaPay, BankTransfer or Online.</summary>
+    public string Method { get; set; } = "Cash";
+    public string? Reference { get; set; }
+    public string? Notes { get; set; }
+    /// <summary>Pending, Approved or Rejected.</summary>
+    public string Status { get; set; } = "Pending";
+    public string? ReviewNote { get; set; }
+    public DateTime? ReviewedAtUtc { get; set; }
+    public Guid? ReviewedByUserId { get; set; }
+    public Guid? PaymentId { get; set; }
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
+}
+
+public sealed class FinancialAdjustment
+{    public Guid Id { get; set; } = Guid.NewGuid();
     public Guid TeacherId { get; set; }
     public Guid StudentId { get; set; }
     public Guid? GroupId { get; set; }

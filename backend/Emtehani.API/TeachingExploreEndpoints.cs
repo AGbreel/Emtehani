@@ -70,7 +70,7 @@ public static class TeachingExploreEndpoints
                 nextSession.TryGetValue(g.Id, out var session);
                 scheduleMap.TryGetValue(g.Id, out var rows);
                 var seatsLeft = g.Capacity > 0 ? Math.Max(0, g.Capacity - active) : (int?)null;
-                var canJoin = status is not ("Active" or "Suspended")
+                var canJoin = status is not ("Active" or "Suspended" or "Pending")
                     && g.EnrollmentOpen
                     && (g.Capacity <= 0 || active < g.Capacity)
                     && (g.EndDateUtc is null || g.EndDateUtc > now);
@@ -134,6 +134,7 @@ public static class TeachingExploreEndpoints
                 return TeachingAccess.Deny("اربط حسابك بالمدرس أولاً من صفحة المدرسين.");
             var membership = await db.GroupMemberships.FirstOrDefaultAsync(x => x.GroupId == id && x.StudentId == userId);
             if (membership is { Status: "Active" }) return Results.Ok(new { ok = true, alreadyMember = true, membershipId = membership.Id });
+            if (membership is { Status: "Pending" }) return Results.Ok(new { ok = true, pendingApproval = true, alreadyMember = false, membershipId = membership.Id });
             if (membership is { Status: "Suspended" }) return TeachingAccess.Deny("عضويتك في هذه المجموعة موقوفة. تواصل مع المدرس.");
             if (!group.EnrollmentOpen) return TeachingAccess.Bad("التسجيل في هذه المجموعة مغلق حالياً.");
             if (group.EndDateUtc is not null && group.EndDateUtc <= DateTime.UtcNow)
@@ -146,18 +147,20 @@ public static class TeachingExploreEndpoints
                 membership = new GroupMembership { TeacherId = group.TeacherId, GroupId = id, StudentId = userId.Value };
                 db.GroupMemberships.Add(membership);
             }
-            membership.Status = "Active";
+            // Self-registration is a request: the teacher must approve before the
+            // student gets access to sessions, materials and attendance.
+            membership.Status = "Pending";
             membership.SuspendedAtUtc = null;
             membership.JoinedAtUtc = membership.JoinedAtUtc == default ? DateTime.UtcNow : membership.JoinedAtUtc;
             membership.UpdatedAtUtc = DateTime.UtcNow;
 
             var student = await db.Users.AsNoTracking().FirstAsync(x => x.Id == userId);
             await TeachingNotify.SendAsync(db, [group.TeacherId], "Group", "System",
-                "طالب جديد انضم للمجموعة", $"{student.FullName} انضم إلى {group.Name}", "groups");
-            TeachingNotify.Audit(db, group.TeacherId, userId, "group.member.self-joined",
+                "طلب انضمام لمجموعة", $"{student.FullName} يطلب الانضمام إلى {group.Name}", "groups");
+            TeachingNotify.Audit(db, group.TeacherId, userId, "group.member.requested",
                 "GroupMembership", membership.Id.ToString(), student.FullName);
             await db.SaveChangesAsync();
-            return Results.Ok(new { ok = true, alreadyMember = false, membershipId = membership.Id });
+            return Results.Ok(new { ok = true, pendingApproval = true, alreadyMember = false, membershipId = membership.Id });
         }).RequireAuthorization().RequireRateLimiting("api");
 
         app.MapPost("/api/teaching/catalog/{id:guid}/join", async (Guid id, ClaimsPrincipal p, AppDbContext db) =>

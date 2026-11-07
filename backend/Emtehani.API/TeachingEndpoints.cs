@@ -651,6 +651,8 @@ public static class TeachingEndpoints
                     title = x.Title,
                     shortDescription = x.ShortDescription,
                     subject = x.Subject,
+                    stage = x.Stage,
+                    grade = x.Grade,
                     coverUrl = x.CoverUrl,
                     teacherName = x.Teacher!.FullName,
                     deliveryMode = x.DeliveryMode,
@@ -661,7 +663,7 @@ public static class TeachingEndpoints
                 }).ToListAsync();
             var itemsWithState = items.Select(x => new
             {
-                x.id, x.title, x.shortDescription, x.subject, x.coverUrl, x.teacherName,
+                x.id, x.title, x.shortDescription, x.subject, x.stage, x.grade, x.coverUrl, x.teacherName,
                 x.deliveryMode, x.isFree, x.price, x.oldPrice, x.lessons,
                 isEnrolled = enrolled.Contains(x.id)
             });

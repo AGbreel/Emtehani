@@ -41,6 +41,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options):DbConte
  public DbSet<DiscountCoupon> DiscountCoupons=>Set<DiscountCoupon>();
  public DbSet<FinancialCharge> FinancialCharges=>Set<FinancialCharge>();
  public DbSet<StudentPayment> StudentPayments=>Set<StudentPayment>();
+ public DbSet<GroupPaymentRequest> GroupPaymentRequests=>Set<GroupPaymentRequest>();
  public DbSet<FinancialAdjustment> FinancialAdjustments=>Set<FinancialAdjustment>();
  public DbSet<PlatformPayment> PlatformPayments=>Set<PlatformPayment>();
  public DbSet<Announcement> Announcements=>Set<Announcement>();

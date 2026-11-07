@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  BadgePercent, Banknote, Coins, HandCoins, Layers, Receipt, RefreshCw, Wallet,
+  BadgePercent, Banknote, ClipboardCheck, Coins, HandCoins, Layers, Plus, Receipt, RefreshCw, Send, Wallet,
 } from 'lucide-react';
 import {
-  Alert, Badge, Button, Card, EmptyState, PageHeader, Skeleton, StatCard, cn,
+  Alert, Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, Select, Skeleton, StatCard, Textarea, cn,
 } from '../components/ui';
 import { request } from '../lib/api';
 import { formatDate, formatNumber } from '../lib/format';
@@ -13,29 +13,84 @@ const methodLabels = {
   Cash: 'نقدي', VodafoneCash: 'فودافون كاش', InstaPay: 'إنستا باي', BankTransfer: 'تحويل بنكي', Online: 'أونلاين',
 };
 const adjustmentLabels = { Discount: 'خصم', Scholarship: 'منحة', Refund: 'استرداد', Correction: 'تصحيح' };
+const MONTHS = Array.from({ length: 12 }, (_, i) => new Date(2024, i, 1).toLocaleDateString('ar-EG', { month: 'long' }));
+const YEARS = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 1 + i);
 
 const tabs = [
   { value: 'ledger', label: 'المستحقات' },
   { value: 'payments', label: 'مدفوعاتي' },
+  { value: 'requests', label: 'طلبات الدفع' },
   { value: 'packages', label: 'باقاتي' },
 ];
+
+const emptyRequest = () => ({
+  groupId: '', amount: '', coverageType: 'Month', sessionsCount: '',
+  periodMonth: new Date().getMonth() + 1, periodYear: new Date().getFullYear(),
+  method: 'Cash', reference: '', notes: '',
+});
 
 export default function StudentFinancePage({ token }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [tab, setTab] = useState('ledger');
+  const [requests, setRequests] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [formOpen, setFormOpen] = useState(false);
+  const [form, setForm] = useState(emptyRequest);
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [notice, setNotice] = useState('');
+
+  const flash = useCallback((message) => {
+    setNotice(message);
+    window.setTimeout(() => setNotice(''), 3400);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const result = await request('/api/teaching/my/finance', { token });
+      const [result, requestData, groupData] = await Promise.all([
+        request('/api/teaching/my/finance', { token }),
+        request('/api/teaching/my/payment-requests', { token }),
+        request('/api/teaching/my/groups', { token }),
+      ]);
       setData(result);
+      setRequests(requestData?.items || []);
+      setGroups((groupData?.items || []).filter((row) => (row.status || 'Active') === 'Active'));
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
+
+  async function submitRequest() {
+    setFormError('');
+    if (!form.groupId) return setFormError('اختر المجموعة.');
+    if (!(Number(form.amount) > 0)) return setFormError('اكتب المبلغ الذي دفعته.');
+    if (form.coverageType === 'Sessions' && !(Number(form.sessionsCount) > 0)) return setFormError('حدد عدد الحصص.');
+    setBusy(true);
+    try {
+      await request('/api/teaching/my/payment-requests', {
+        token, method: 'POST',
+        body: JSON.stringify({
+          groupId: form.groupId,
+          amount: Number(form.amount),
+          coverageType: form.coverageType,
+          sessionsCount: form.coverageType === 'Sessions' ? Number(form.sessionsCount) : null,
+          periodMonth: form.coverageType === 'Month' ? Number(form.periodMonth) : null,
+          periodYear: form.coverageType === 'Month' ? Number(form.periodYear) : null,
+          method: form.method,
+          reference: form.reference || null,
+          notes: form.notes || null,
+        }),
+      });
+      setFormOpen(false);
+      setForm(emptyRequest());
+      flash('تم إرسال طلب الدفع للمدرس. سيصلك إشعار عند التأكيد.');
+      await load();
+    } catch (err) { setFormError(err.message); } finally { setBusy(false); }
+  }
 
   const summary = data?.summary || {};
   const ledger = data?.ledger || [];
@@ -53,6 +108,7 @@ export default function StudentFinancePage({ token }) {
       />
 
       {error ? <Alert tone="danger" onClose={() => setError('')}>{error}</Alert> : null}
+      {notice ? <Alert tone="success" onClose={() => setNotice('')}>{notice}</Alert> : null}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={Coins} label="إجمالي المستحقات" value={money(summary.charged)} note={`${formatNumber(ledger.length)} بند`} tone="blue" loading={loading} />
@@ -150,6 +206,51 @@ export default function StudentFinancePage({ token }) {
         </div>
       ) : null}
 
+      {!loading && tab === 'requests' ? (
+        <div className="grid gap-4">
+          <Card className="flex flex-wrap items-center justify-between gap-2 p-4">
+            <div className="min-w-0">
+              <h3 className="font-display text-[15px] font-semibold text-ink">طلبات دفع المجموعات</h3>
+              <p className="mt-0.5 text-[11.5px] text-muted">أرسل طلباً بالمبلغ وعدد الحصص أو الشهر، وسيؤكده معلمك.</p>
+            </div>
+            <Button size="sm" icon={Plus} disabled={groups.length === 0} onClick={() => { setForm(emptyRequest()); setFormError(''); setFormOpen(true); }}>طلب دفع جديد</Button>
+          </Card>
+
+          {groups.length === 0 ? <Alert tone="info">تحتاج للانضمام إلى مجموعة مقبولة من معلمك أولاً حتى تستطيع إرسال طلب دفع.</Alert> : null}
+
+          {requests.length === 0 ? (
+            <Card><EmptyState icon={ClipboardCheck} title="لا توجد طلبات دفع" description="عند إرسال طلب ستتابع حالته هنا حتى يؤكده معلمك." /></Card>
+          ) : (
+            <div className="grid gap-2">
+              {requests.map((row) => (
+                <Card key={row.id} className="p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge tone={row.status === 'Approved' ? 'success' : row.status === 'Rejected' ? 'danger' : 'warning'}>
+                          {row.status === 'Approved' ? 'مؤكد' : row.status === 'Rejected' ? 'مرفوض' : 'بانتظار تأكيد المدرس'}
+                        </Badge>
+                        <Badge tone="neutral">{row.groupName || 'مجموعة'}</Badge>
+                        <span className="text-[10.5px] text-muted">{row.teacherName || 'معلم'}</span>
+                      </div>
+                      <p className="mt-1.5 text-[13px] font-bold text-ink">
+                        {money(row.amount)} · {row.coverageType === 'Sessions'
+                          ? `${formatNumber(row.sessionsCount || 0)} حصة`
+                          : `شهر ${MONTHS[(Number(row.periodMonth) || 1) - 1]} ${row.periodYear || ''}`}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-muted">{methodLabels[row.method] || row.method} · {formatDate(row.createdAtUtc)}</p>
+                      {row.notes ? <p className="mt-0.5 text-[11px] text-subtle">{row.notes}</p> : null}
+                      {row.reviewNote ? <p className="mt-1 text-[11px] font-bold text-ink">ملاحظة المدرس: {row.reviewNote}</p> : null}
+                      {row.status === 'Approved' && row.receiptNumber ? <p className="mt-1 font-mono text-[10.5px] text-emerald">إيصال: {row.receiptNumber}</p> : null}
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
+
       {!loading && tab === 'packages' ? (
         packages.length === 0 ? <Card><EmptyState icon={Layers} title="لا توجد باقات" description="باقاتك المشترك بها ستظهر هنا مع تاريخ الانتهاء." /></Card> : (
           <div className="grid gap-3 md:grid-cols-2">
@@ -177,6 +278,67 @@ export default function StudentFinancePage({ token }) {
             })}
           </div>
         )
+      ) : null}
+
+      {formOpen ? (
+        <Modal open onClose={() => setFormOpen(false)} icon={Send} title="طلب دفع جديد"
+          description="اكتب المبلغ وحدد إن كان مدفوعاً عن عدد حصص أو عن شهر، وسيراجعه معلمك."
+          footer={<>
+            <Button variant="ghost" onClick={() => setFormOpen(false)}>إلغاء</Button>
+            <Button icon={Send} loading={busy} onClick={submitRequest}>إرسال الطلب</Button>
+          </>}>
+          <div className="grid gap-4">
+            {formError ? <Alert tone="danger">{formError}</Alert> : null}
+            <Field label="المجموعة">
+              <Select value={form.groupId} onChange={(e) => setForm((p) => ({ ...p, groupId: e.target.value }))}>
+                <option value="">اختر المجموعة</option>
+                {groups.map((group) => (
+                  <option key={group.id} value={group.id}>{group.name}{group.teacherName ? ` — ${group.teacherName}` : ''}</option>
+                ))}
+              </Select>
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="المبلغ المدفوع (ج.م)" hint="اكتب المبلغ الذي دفعته فعلاً.">
+                <Input type="number" min="0" value={form.amount} onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))} />
+              </Field>
+              <Field label="طريقة الدفع">
+                <Select value={form.method} onChange={(e) => setForm((p) => ({ ...p, method: e.target.value }))}>
+                  {Object.entries(methodLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </Select>
+              </Field>
+              <Field label="الدفع مقابل">
+                <Select value={form.coverageType} onChange={(e) => setForm((p) => ({ ...p, coverageType: e.target.value }))}>
+                  <option value="Month">شهر</option>
+                  <option value="Sessions">عدد حصص</option>
+                </Select>
+              </Field>
+              {form.coverageType === 'Sessions' ? (
+                <Field label="عدد الحصص">
+                  <Input type="number" min="1" max="200" value={form.sessionsCount} onChange={(e) => setForm((p) => ({ ...p, sessionsCount: e.target.value }))} />
+                </Field>
+              ) : (
+                <>
+                  <Field label="الشهر">
+                    <Select value={form.periodMonth} onChange={(e) => setForm((p) => ({ ...p, periodMonth: e.target.value }))}>
+                      {MONTHS.map((label, index) => <option key={label} value={index + 1}>{label}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="السنة">
+                    <Select value={form.periodYear} onChange={(e) => setForm((p) => ({ ...p, periodYear: e.target.value }))}>
+                      {YEARS.map((year) => <option key={year} value={year}>{year}</option>)}
+                    </Select>
+                  </Field>
+                </>
+              )}
+              <Field label="المرجع / رقم العملية (اختياري)">
+                <Input value={form.reference} onChange={(e) => setForm((p) => ({ ...p, reference: e.target.value }))} />
+              </Field>
+            </div>
+            <Field label="ملاحظات (اختياري)">
+              <Textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="min-h-20" />
+            </Field>
+          </div>
+        </Modal>
       ) : null}
     </div>
   );

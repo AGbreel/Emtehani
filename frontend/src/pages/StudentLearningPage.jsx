@@ -1,12 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Html5Qrcode } from 'html5-qrcode';
 import {
   BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock3, ExternalLink, GraduationCap,
-  MapPin, MessageCircle, QrCode, RefreshCw, Send, UserRound, Video, XCircle,
+  MapPin, MessageCircle, QrCode, RefreshCw, ScanLine, Send, UserRound, Video, XCircle,
 } from 'lucide-react';
 import {
   Alert, Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader,
   Segmented, Skeleton, StatCard, Textarea, cn,
 } from '../components/ui';
+import MediaUploader from '../components/MediaUploader';
 import { request } from '../lib/api';
 import { formatDate, formatNumber } from '../lib/format';
 
@@ -41,8 +43,10 @@ export default function StudentLearningPage({ token, onOpenChat, onExplore }) {
   const [answer, setAnswer] = useState('');
   const [attachmentUrl, setAttachmentUrl] = useState('');
   const [qrOpen, setQrOpen] = useState(false);
+  const [qrMode, setQrMode] = useState('scan');
   const [qrToken, setQrToken] = useState('');
   const [modalError, setModalError] = useState('');
+  const qrScannerRef = useRef(null);
 
   const flash = useCallback((message) => {
     setNotice(message);
@@ -86,6 +90,8 @@ export default function StudentLearningPage({ token, onOpenChat, onExplore }) {
   const shownSessions = sessionFilter === 'upcoming' ? upcoming : past;
 
   const pendingHomework = homework.filter((item) => !item.submission || item.submission.status === 'Submitted' || item.submission.status === 'Late');
+  const activeGroups = groups.filter((item) => (item.status || 'Active') === 'Active');
+  const pendingGroups = groups.filter((item) => item.status === 'Pending');
   const totals = attendance.totals || {};
   const attendanceRate = useMemo(() => {
     const total = (totals.Present || 0) + (totals.Late || 0) + (totals.Absent || 0) + (totals.Excused || 0);
@@ -110,20 +116,51 @@ export default function StudentLearningPage({ token, onOpenChat, onExplore }) {
     } catch (err) { setModalError(err.message); } finally { setBusy(''); }
   }
 
-  async function redeemQr() {
+  async function redeemQr(explicitToken) {
     setModalError('');
-    if (!qrToken.trim()) return setModalError('الصق رمز الحضور.');
+    const value = (explicitToken ?? qrToken).trim();
+    if (!value) return setModalError('الصق رمز الحضور أو امسحه بالكاميرا.');
     setBusy('qr');
     try {
       const result = await request('/api/teaching/attendance/qr', {
-        token, method: 'POST', body: JSON.stringify({ token: qrToken.trim() }),
+        token, method: 'POST', body: JSON.stringify({ token: value }),
       });
       setQrOpen(false);
       setQrToken('');
       flash(`تم تسجيل حضورك (${attendanceLabels[result?.status] || result?.status}) — ${result?.sessionTitle || ''}`);
       await load();
-    } catch (err) { setModalError(err.message); } finally { setBusy(''); }
+    } catch (err) { setModalError(err.message); setQrMode('manual'); } finally { setBusy(''); }
   }
+
+  useEffect(() => {
+    if (!qrOpen || qrMode !== 'scan') return undefined;
+    let active = true;
+    const scanner = new Html5Qrcode('student-attendance-qr', { verbose: false });
+    qrScannerRef.current = scanner;
+    scanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 230, height: 230 } },
+      (decoded) => {
+        if (!active) return;
+        active = false;
+        scanner.stop().then(() => scanner.clear()).catch(() => {});
+        setQrToken(decoded);
+        setQrMode('manual');
+        redeemQr(decoded);
+      },
+      () => {},
+    ).catch(() => {
+      if (active) {
+        setModalError('تعذر فتح الكاميرا. اسمح للمتصفح بالوصول للكاميرا، أو الصق رمز الحضور يدوياً.');
+        setQrMode('manual');
+      }
+    });
+    return () => {
+      active = false;
+      scanner.stop().then(() => scanner.clear()).catch(() => {});
+      qrScannerRef.current = null;
+    };
+  }, [qrOpen, qrMode]);
 
   function openHomework(item) {
     setSubmitTarget(item);
@@ -135,11 +172,11 @@ export default function StudentLearningPage({ token, onOpenChat, onExplore }) {
   return (
     <div className="grid gap-5">
       <PageHeader
-        eyebrow="تعلّمي"
+        eyebrow="مجموعاتي"
         title="مجموعاتي وحصصي"
         description="تابع جدول حصصك، سجّل حضورك، وسلّم واجباتك — كل شيء في مكان واحد."
         action={<div className="flex flex-wrap gap-2">
-          <Button variant="soft" size="sm" icon={QrCode} onClick={() => { setQrOpen(true); setModalError(''); }}>تسجيل حضور QR</Button>
+          <Button variant="soft" size="sm" icon={QrCode} onClick={() => { setQrOpen(true); setQrMode('scan'); setQrToken(''); setModalError(''); }}>تسجيل حضور QR</Button>
           <Button variant="soft" size="sm" icon={RefreshCw} onClick={load} loading={loading}>تحديث</Button>
         </div>}
       />
@@ -147,8 +184,14 @@ export default function StudentLearningPage({ token, onOpenChat, onExplore }) {
       {error ? <Alert tone="danger" onClose={() => setError('')}>{error}</Alert> : null}
       {notice ? <Alert tone="success" onClose={() => setNotice('')}>{notice}</Alert> : null}
 
+      {pendingGroups.length ? (
+        <Alert tone="info">
+          لديك {formatNumber(pendingGroups.length)} طلب انضمام بانتظار موافقة المدرس: {pendingGroups.map((item) => item.name).join('، ')}. ستظهر الحصص والواجبات بعد القبول.
+        </Alert>
+      ) : null}
+
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={BookOpen} label="مجموعاتي" value={formatNumber(groups.length)} note="مجموعات نشطة" tone="primary" />
+        <StatCard icon={BookOpen} label="مجموعاتي" value={formatNumber(activeGroups.length)} note={pendingGroups.length ? `${formatNumber(pendingGroups.length)} بانتظار الموافقة` : 'مجموعات نشطة'} tone="primary" />
         <StatCard icon={CalendarDays} label="حصص قادمة" value={formatNumber(upcoming.length)} note={upcoming[0] ? formatDate(upcoming[0].startsAtUtc) : 'لا توجد قادمة'} tone="blue" />
         <StatCard icon={CheckCircle2} label="نسبة الحضور" value={`${formatNumber(attendanceRate)}%`} note={`${formatNumber(totals.Present || 0)} حاضر · ${formatNumber(totals.Absent || 0)} غائب`} tone={attendanceRate >= 75 ? 'emerald' : 'warning'} />
         <StatCard icon={ClipboardList} label="واجبات معلقة" value={formatNumber(pendingHomework.length)} note={`${formatNumber(homework.length)} واجب إجمالاً`} tone={pendingHomework.length ? 'warning' : 'emerald'} />
@@ -183,7 +226,11 @@ export default function StudentLearningPage({ token, onOpenChat, onExplore }) {
               <Card key={group.id} className="p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <Badge tone="neutral">{deliveryLabels[group.deliveryMode] || group.deliveryMode}</Badge>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge tone="neutral">{deliveryLabels[group.deliveryMode] || group.deliveryMode}</Badge>
+                      {group.status === 'Pending' ? <Badge tone="warning">بانتظار موافقة المدرس</Badge> : null}
+                      {group.status === 'Suspended' ? <Badge tone="danger">العضوية موقوفة</Badge> : null}
+                    </div>
                     <h3 className="mt-1.5 font-display text-[15px] font-semibold text-ink">{group.name}</h3>
                     <p className="mt-0.5 text-[11.5px] text-muted">{group.subject || '—'}{group.grade ? ` · ${group.grade}` : ''}</p>
                   </div>
@@ -191,13 +238,19 @@ export default function StudentLearningPage({ token, onOpenChat, onExplore }) {
                 </div>
                 <div className="mt-3 grid gap-1.5 text-[11.5px] text-muted">
                   <p className="flex items-center gap-1.5"><UserRound size={12} />{group.teacherName || 'المعلم'}</p>
-                  {group.nextSessionAtUtc ? <p className="flex items-center gap-1.5 text-primary"><Clock3 size={12} />الحصة القادمة: {formatDate(group.nextSessionAtUtc)}</p> : <p className="flex items-center gap-1.5"><XCircle size={12} />لا توجد حصة قادمة</p>}
+                  {group.status === 'Pending' ? (
+                    <p className="flex items-center gap-1.5 text-warning"><Clock3 size={12} />طلبك عند المدرس وسيتم إشعارك عند الموافقة</p>
+                  ) : group.status === 'Suspended' ? (
+                    <p className="flex items-center gap-1.5 text-danger"><XCircle size={12} />تواصل مع المدرس لإعادة تفعيل عضويتك</p>
+                  ) : group.nextSessionAtUtc ? <p className="flex items-center gap-1.5 text-primary"><Clock3 size={12} />الحصة القادمة: {formatDate(group.nextSessionAtUtc)}</p> : <p className="flex items-center gap-1.5"><XCircle size={12} />لا توجد حصة قادمة</p>}
                   {group.deliveryMode !== 'Online' && group.location ? <p className="flex items-center gap-1.5"><MapPin size={12} />{group.location}</p> : null}
                 </div>
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {group.onlineLink ? <a href={group.onlineLink} target="_blank" rel="noreferrer"><Button size="xs" variant="soft" icon={Video}>دخول الحصة</Button></a> : null}
-                  {group.chatConversationId && onOpenChat ? <Button size="xs" variant="soft" icon={MessageCircle} onClick={() => onOpenChat(group.chatConversationId)}>محادثة المجموعة</Button> : null}
-                </div>
+                {group.status === 'Active' ? (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {group.onlineLink ? <a href={group.onlineLink} target="_blank" rel="noreferrer"><Button size="xs" variant="soft" icon={Video}>دخول الحصة</Button></a> : null}
+                    {group.chatConversationId && onOpenChat ? <Button size="xs" variant="soft" icon={MessageCircle} onClick={() => onOpenChat(group.chatConversationId)}>محادثة المجموعة</Button> : null}
+                  </div>
+                ) : null}
               </Card>
             ))}
           </div>
@@ -315,18 +368,37 @@ export default function StudentLearningPage({ token, onOpenChat, onExplore }) {
           <div className="grid gap-4">
             {modalError ? <Alert tone="danger">{modalError}</Alert> : null}
             <Field label="إجابتك"><Textarea value={answer} onChange={(e) => setAnswer(e.target.value)} className="min-h-32" maxLength={8000} /></Field>
-            <Field label="رابط مرفق (اختياري)" hint="ارفع الملف على مساحة تخزين آمنة وضع الرابط هنا."><Input value={attachmentUrl} onChange={(e) => setAttachmentUrl(e.target.value)} dir="ltr" placeholder="https://..." /></Field>
+            <MediaUploader
+              token={token}
+              value={attachmentUrl}
+              onChange={setAttachmentUrl}
+              kind="File"
+              label="مرفق الواجب (اختياري)"
+              hint="ارفع ملف الواجب من جهازك: PDF أو Word أو صور أو نص."
+              maxMb={40}
+            />
           </div>
         </Modal>
       ) : null}
 
       {qrOpen ? (
-        <Modal open onClose={() => setQrOpen(false)} icon={QrCode} title="تسجيل الحضور" description="الصق رمز الحضور الذي يظهر في الحصة."
-          footer={<><Button variant="ghost" onClick={() => setQrOpen(false)}>إلغاء</Button><Button loading={busy === 'qr'} onClick={redeemQr}>تسجيل</Button></>}>
+        <Modal open onClose={() => { setQrOpen(false); setModalError(''); }} icon={QrCode} title="تسجيل الحضور" description="امسح رمز الحضور الذي يعرضه المدرس أثناء الحصة."
+          footer={<>
+            <Button variant="ghost" onClick={() => setQrOpen(false)}>إلغاء</Button>
+            {qrMode === 'manual' ? <Button loading={busy === 'qr'} onClick={() => redeemQr()}>تسجيل</Button> : null}
+          </>}>
           <div className="grid gap-3">
             {modalError ? <Alert tone="danger">{modalError}</Alert> : null}
-            <Field label="رمز الحضور"><Input value={qrToken} onChange={(e) => setQrToken(e.target.value)} dir="ltr" placeholder="QR token" /></Field>
-            <Alert tone="info">يُقبل الرمز أثناء الحصة فقط وينتهي تلقائياً بعد دقائق.</Alert>
+            <div className="grid grid-cols-2 gap-2">
+              <Button size="sm" variant={qrMode === 'scan' ? 'primary' : 'secondary'} icon={ScanLine} onClick={() => { setModalError(''); setQrMode('scan'); }}>مسح بالكاميرا</Button>
+              <Button size="sm" variant={qrMode === 'manual' ? 'primary' : 'secondary'} icon={QrCode} onClick={() => { setModalError(''); setQrMode('manual'); }}>إدخال يدوي</Button>
+            </div>
+            {qrMode === 'scan' ? (
+              <div id="student-attendance-qr" className="min-h-[240px] overflow-hidden rounded-xl border border-line bg-black" />
+            ) : (
+              <Field label="رمز الحضور"><Input value={qrToken} onChange={(e) => setQrToken(e.target.value)} dir="ltr" placeholder="QR token" /></Field>
+            )}
+            <Alert tone="info">يُقبل الرمز أثناء وقت الحصة فقط وينتهي تلقائياً مع نهايتها.</Alert>
           </div>
         </Modal>
       ) : null}

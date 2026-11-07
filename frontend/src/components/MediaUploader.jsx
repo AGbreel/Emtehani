@@ -33,6 +33,13 @@ const KINDS = {
     hint: 'PDF أو Word أو PowerPoint أو Excel أو نص.',
     allowed: '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.rtf',
   },
+  File: {
+    accept: 'application/pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.rtf,image/jpeg,image/png,image/webp,image/heic',
+    icon: FileText,
+    title: 'ملف مرفق',
+    hint: 'PDF أو Word أو صور أو نص.',
+    allowed: '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.rtf,.jpg,.jpeg,.png,.webp,.heic',
+  },
 };
 
 function postMedia(form, token, onProgress) {

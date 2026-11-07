@@ -71,7 +71,7 @@ const teacherTitles = {
 const studentTitles = {
   dashboard: 'نظرة عامة',
   explore: 'استكشف',
-  learning: 'تعلّمي',
+  learning: 'مجموعاتي',
   courses: 'كورساتي',
   available: 'الامتحانات المتاحة',
   results: 'نتائجي',
@@ -597,7 +597,7 @@ export default function App() {
     content = <StudentExplorePage token={token} onOpenTeachers={() => setPage('teachers')} />;
   } else if (page === 'courses') {
     content = isStudent
-      ? <MyCoursesPage token={token} onExplore={() => setPage('explore')} />
+      ? <MyCoursesPage token={token} user={user} onExplore={() => setPage('explore')} />
       : <TeachingCoursesPage token={token} />;
   } else if (page === 'groups' && (isTeacher || isAssistant)) {
     content = <TeachingGroupsPage token={token} onOpenChat={() => setPage('chat')} />;
