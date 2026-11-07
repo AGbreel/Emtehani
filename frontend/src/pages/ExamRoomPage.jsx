@@ -5,6 +5,7 @@ import {
   BookOpen,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
@@ -85,6 +86,7 @@ function MatchingInput({ question, value, onChange }) {
     return shuffleIndices(pairs.length, hashCode(question.id));
   }, [question.optionOrder, question.id, pairs.length]);
   const selected = String(value || '').split(',').map((item) => item === '' ? -1 : Number(item));
+  const [openRow, setOpenRow] = useState(null);
   function choose(pairIndex, optionIndex) {
     const next = pairs.map((_, index) => selected[index] ?? -1);
     next[pairIndex] = Number(optionIndex);
@@ -97,11 +99,36 @@ function MatchingInput({ question, value, onChange }) {
       </div>
       {pairs.map((pair, index) => (
         <div key={`${pair.left}-${index}`} className="grid gap-1.5 rounded-[11px] border border-line bg-surface-soft p-2.5 sm:grid-cols-[1fr_1.2fr] sm:items-center sm:gap-2">
-          <span className="flex items-center gap-2 text-[13px] font-semibold text-ink"><span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary-soft text-[10px] font-bold text-primary">{formatNumber(index + 1)}</span>{pair.left}</span>
-          <select value={selected[index] ?? ''} onChange={(event) => choose(index, event.target.value)} aria-label={`اختر ما يقابل ${pair.left}`} className="h-10 w-full rounded-[9px] border border-line bg-surface px-2.5 text-[13px] text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft">
-            <option value="">اختر الإجابة...</option>
-            {order.map((optionIndex) => <option key={optionIndex} value={optionIndex}>{pairs[optionIndex]?.right}</option>)}
-          </select>
+          <span className="flex items-center gap-2 text-[13px] font-semibold text-ink"><span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary-soft text-[10px] font-bold text-primary">{formatNumber(index + 1)}</span><ObfuscatedText text={pair.left} /></span>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setOpenRow(openRow === index ? null : index)}
+              aria-haspopup="listbox"
+              aria-expanded={openRow === index}
+              aria-label={`اختر ما يقابل العنصر ${formatNumber(index + 1)}`}
+              className="flex h-10 w-full items-center justify-between gap-2 rounded-[9px] border border-line bg-surface px-2.5 text-start text-[13px] text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft"
+            >
+              {pairs[selected[index]]?.right ? <ObfuscatedText text={pairs[selected[index]].right} /> : <span className="text-subtle">اختر الإجابة...</span>}
+              <ChevronDown size={14} className={cn('shrink-0 text-muted transition', openRow === index ? 'rotate-180' : '')} />
+            </button>
+            {openRow === index ? (
+              <div role="listbox" className="absolute z-20 mt-1 grid max-h-56 w-full gap-1 overflow-auto rounded-[10px] border border-line bg-surface p-1.5 shadow-soft">
+                {order.map((optionIndex) => (
+                  <button
+                    key={optionIndex}
+                    type="button"
+                    role="option"
+                    aria-selected={selected[index] === optionIndex}
+                    onClick={() => { choose(index, optionIndex); setOpenRow(null); }}
+                    className={cn('rounded-[8px] px-2.5 py-2 text-start text-[13px] transition', selected[index] === optionIndex ? 'bg-primary-soft font-bold text-primary' : 'text-ink hover:bg-surface-soft')}
+                  >
+                    <ObfuscatedText text={pairs[optionIndex]?.right || ''} />
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
       ))}
     </div>
