@@ -47,6 +47,24 @@ builder.Services.AddCors(o => o.AddPolicy("frontend", p => p
     .WithExposedHeaders("Retry-After")
     .SetPreflightMaxAge(TimeSpan.FromMinutes(10))));
 
+// Links inside emails must land on the app the user actually came from, not
+// blindly on the first configured origin (the server list may hold a legacy domain).
+string ResolveClientBaseUrl(HttpRequest? request)
+{
+    if (request is not null)
+    {
+        var header = request.Headers.Origin.FirstOrDefault() ?? request.Headers.Referer.FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(header) && Uri.TryCreate(header, UriKind.Absolute, out var uri))
+        {
+            var candidate = $"{uri.Scheme}://{uri.Authority}".TrimEnd('/');
+            var match = allowedOrigins.FirstOrDefault(origin =>
+                string.Equals(origin, candidate, StringComparison.OrdinalIgnoreCase));
+            if (match is not null) return match;
+        }
+    }
+    return allowedOrigins[0];
+}
+
 var configuredPublicApiUrl = builder.Configuration["PublicApiUrl"];
 if (isProduction)
 {
@@ -1009,11 +1027,11 @@ string BrandedEmail(string kicker, string heading, string introHtml, string ctaL
 </body>
 </html>";
 }
-async Task<bool> SendVerificationEmail(AppUser user, string verifyToken)
+async Task<bool> SendVerificationEmail(AppUser user, string verifyToken, string clientBaseUrl)
 {
     var smtpHost = builder.Configuration["Email:SmtpHost"];
     if (string.IsNullOrWhiteSpace(smtpHost)) return false;
-    var verifyUrl = $"{(builder.Configuration["PublicApiUrl"] ?? "http://localhost:5000").TrimEnd('/')}/api/auth/verify-email?token={Uri.EscapeDataString(verifyToken)}";
+    var verifyUrl = $"{(builder.Configuration["PublicApiUrl"] ?? "http://localhost:5000").TrimEnd('/')}/api/auth/verify-email?token={Uri.EscapeDataString(verifyToken)}&returnUrl={Uri.EscapeDataString(clientBaseUrl)}";
     try
     {
         var fromAddress = builder.Configuration["Email:From"] ?? "no-reply@localhost";
@@ -1040,11 +1058,11 @@ async Task<bool> SendVerificationEmail(AppUser user, string verifyToken)
         return false;
     }
 }
-async Task<bool> SendPasswordResetEmail(AppUser user, string resetToken)
+async Task<bool> SendPasswordResetEmail(AppUser user, string resetToken, string clientBaseUrl)
 {
     var smtpHost = builder.Configuration["Email:SmtpHost"];
     if (string.IsNullOrWhiteSpace(smtpHost)) return false;
-    var resetUrl = $"{allowedOrigins[0]}/?resetToken={Uri.EscapeDataString(resetToken)}";
+    var resetUrl = $"{clientBaseUrl}/?resetToken={Uri.EscapeDataString(resetToken)}";
     try
     {
         var fromAddress = builder.Configuration["Email:From"] ?? "no-reply@localhost";
@@ -1109,7 +1127,7 @@ async Task FinalizeExpired(AppDbContext db)
     await db.SaveChangesAsync();
     await tx.CommitAsync();
 }
-app.MapPost("/api/auth/register", async (RegisterRequest req, AppDbContext db) =>
+app.MapPost("/api/auth/register", async (RegisterRequest req, AppDbContext db, HttpRequest request) =>
 {
   if (req is null || string.IsNullOrWhiteSpace(req.FullName) ||
       string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Password) ||
@@ -1317,7 +1335,7 @@ app.MapPost("/api/auth/register", async (RegisterRequest req, AppDbContext db) =
   if (verifyToken is null)
     return Results.Ok(new { message = "تم إنشاء الحساب وتفعيله تلقائيًا. يمكنك تسجيل الدخول الآن.", studentCode = user.StudentCode });
 
-  if (!await SendVerificationEmail(user, verifyToken))
+  if (!await SendVerificationEmail(user, verifyToken, ResolveClientBaseUrl(request)))
   {
     // Never leave a half-created account behind if verification delivery fails.
     var requests = await db.TeacherStudentRequests.Where(x => x.StudentId == user.Id).ToListAsync();
@@ -1333,7 +1351,7 @@ app.MapPost("/api/auth/register", async (RegisterRequest req, AppDbContext db) =
   }
   return Results.Ok(new { message = "تم إنشاء الحساب. افتح بريدك الإلكتروني واضغط على رابط التأكيد قبل تسجيل الدخول.", studentCode = user.StudentCode });
 }).RequireRateLimiting("auth");
-app.MapGet("/api/auth/verify-email", async (string token, AppDbContext db) =>
+app.MapGet("/api/auth/verify-email", async (string token, string? returnUrl, AppDbContext db) =>
 {
   if (string.IsNullOrWhiteSpace(token)) return Results.BadRequest("رابط التأكيد غير صالح.");
   var user = await db.Users.FirstOrDefaultAsync(x => x.EmailVerificationToken == token);
@@ -1341,7 +1359,10 @@ app.MapGet("/api/auth/verify-email", async (string token, AppDbContext db) =>
   if (user.EmailVerificationExpiresUtc < DateTime.UtcNow) return Results.BadRequest("انتهت صلاحية رابط التأكيد. اطلب إعادة إرسال رسالة التأكيد.");
   user.EmailConfirmed = true; user.EmailVerificationToken = null; user.EmailVerificationExpiresUtc = null;
   await db.SaveChangesAsync();
-  var loginUrl = WebUtility.HtmlEncode($"{allowedOrigins[0]}/");
+  // The emailed link carries the app the user signed up from; reject anything else.
+  var safeReturn = allowedOrigins.FirstOrDefault(origin =>
+      string.Equals(origin, (returnUrl ?? string.Empty).TrimEnd('/'), StringComparison.OrdinalIgnoreCase)) ?? allowedOrigins[0];
+  var loginUrl = WebUtility.HtmlEncode($"{safeReturn}/");
   var successPage = $@"<!doctype html>
 <html lang=""ar"" dir=""rtl""><head><meta charset=""utf-8""><meta name=""viewport"" content=""width=device-width,initial-scale=1""><title>تم تأكيد البريد – امتحاني</title></head>
 <body style=""margin:0;min-height:100vh;display:grid;place-items:center;background:#071410;font-family:Tahoma,Arial,sans-serif;padding:24px;"">
@@ -1358,7 +1379,7 @@ app.MapGet("/api/auth/verify-email", async (string token, AppDbContext db) =>
 </body></html>";
   return Results.Content(successPage, "text/html; charset=utf-8");
 }).RequireRateLimiting("auth");
-app.MapPost("/api/auth/resend-verification", async (ResendVerificationRequest req, AppDbContext db) =>
+app.MapPost("/api/auth/resend-verification", async (ResendVerificationRequest req, AppDbContext db, HttpRequest request) =>
 {
     var message = "إذا كان البريد مسجلاً وغير مؤكد، فسنرسل رابط تأكيد جديداً.";
     if (req is null || string.IsNullOrWhiteSpace(req.Email) || !req.Email.Contains('@')) return Results.BadRequest(new { message = "أدخل بريداً إلكترونياً صحيحاً." });
@@ -1370,11 +1391,11 @@ app.MapPost("/api/auth/resend-verification", async (ResendVerificationRequest re
         user.EmailVerificationToken = token;
         user.EmailVerificationExpiresUtc = DateTime.UtcNow.AddHours(24);
         await db.SaveChangesAsync();
-        await SendVerificationEmail(user, token);
+        await SendVerificationEmail(user, token, ResolveClientBaseUrl(request));
     }
     return Results.Ok(new { message });
 }).RequireRateLimiting("auth");
-app.MapPost("/api/auth/forgot-password", async (ForgotPasswordRequest req, AppDbContext db) =>
+app.MapPost("/api/auth/forgot-password", async (ForgotPasswordRequest req, AppDbContext db, HttpRequest request) =>
 {
     var generic = "إذا كان البريد مسجلاً فسيصلك رابط لإعادة تعيين كلمة المرور.";
     if (req is null || string.IsNullOrWhiteSpace(req.Email) || !req.Email.Contains('@'))
@@ -1386,7 +1407,7 @@ app.MapPost("/api/auth/forgot-password", async (ForgotPasswordRequest req, AppDb
     user.PasswordResetToken = token;
     user.PasswordResetExpiresUtc = DateTime.UtcNow.AddHours(1);
     await db.SaveChangesAsync();
-    var sent = await SendPasswordResetEmail(user, token);
+    var sent = await SendPasswordResetEmail(user, token, ResolveClientBaseUrl(request));
     if (!sent && app.Environment.IsDevelopment())
         return Results.Ok(new { message = generic, resetToken = token });
     return Results.Ok(new { message = generic });
@@ -2659,7 +2680,7 @@ app.MapPost("/api/teacher/students/request", async (TeacherStudentRequestCreate 
     });
 }).RequireAuthorization().RequireRateLimiting("api");
 
-app.MapPost("/api/teacher/students/invite", async (TeacherInvitationRequest req, ClaimsPrincipal p, AppDbContext db) =>
+app.MapPost("/api/teacher/students/invite", async (TeacherInvitationRequest req, ClaimsPrincipal p, AppDbContext db, HttpRequest request) =>
 {
     if (p.FindFirstValue(ClaimTypes.Role) != "Teacher") return Results.Forbid();
     if (!Guid.TryParse(UserId(p), out var teacherId)) return Results.Unauthorized();
@@ -2721,7 +2742,7 @@ app.MapPost("/api/teacher/students/invite", async (TeacherInvitationRequest req,
         {
             invitationId = pending.Id,
             token = pending.Token,
-            inviteUrl = $"{allowedOrigins[0]}/?invite={Uri.EscapeDataString(pending.Token)}",
+            inviteUrl = $"{ResolveClientBaseUrl(request)}/?invite={Uri.EscapeDataString(pending.Token)}",
             status = pending.Status,
             expiresAtUtc = pending.ExpiresAtUtc,
             message = "توجد دعوة معلّقة لهذا الرقم بالفعل. شارك الرابط نفسه مع الطالب."
@@ -2748,17 +2769,18 @@ app.MapPost("/api/teacher/students/invite", async (TeacherInvitationRequest req,
     {
         invitationId = invitation.Id,
         token = invitation.Token,
-        inviteUrl = $"{allowedOrigins[0]}/?invite={Uri.EscapeDataString(invitation.Token)}",
+        inviteUrl = $"{ResolveClientBaseUrl(request)}/?invite={Uri.EscapeDataString(invitation.Token)}",
         status = invitation.Status,
         expiresAtUtc = invitation.ExpiresAtUtc,
         message = "تم إنشاء رابط دعوة. لا توجد خدمة رسائل تلقائية؛ أرسل الرابط للطالب ليُنشئ حسابه بنفسه ويوافق على الارتباط."
     });
 }).RequireAuthorization().RequireRateLimiting("api");
 
-app.MapGet("/api/teacher/students/invitations", async (ClaimsPrincipal p, AppDbContext db) =>
+app.MapGet("/api/teacher/students/invitations", async (ClaimsPrincipal p, AppDbContext db, HttpRequest request) =>
 {
     if (p.FindFirstValue(ClaimTypes.Role) != "Teacher") return Results.Forbid();
     if (!Guid.TryParse(UserId(p), out var teacherId)) return Results.Unauthorized();
+    var inviteBase = ResolveClientBaseUrl(request);
     var now = DateTime.UtcNow;
     var rows = await db.TeacherStudentInvitations.AsNoTracking()
         .Where(x => x.TeacherId == teacherId)
@@ -2784,7 +2806,7 @@ app.MapGet("/api/teacher/students/invitations", async (ClaimsPrincipal p, AppDbC
     {
         x.invitationId, x.StudentName, x.StudentPhone, x.ParentPhone, x.Stage, x.Grade, x.Token,
         x.Status, x.effectiveStatus, x.CreatedAtUtc, x.ExpiresAtUtc, x.AcceptedAtUtc,
-        inviteUrl = $"{allowedOrigins[0]}/?invite={Uri.EscapeDataString(x.Token)}"
+        inviteUrl = $"{inviteBase}/?invite={Uri.EscapeDataString(x.Token)}"
     }).ToList());
 }).RequireAuthorization();
 
