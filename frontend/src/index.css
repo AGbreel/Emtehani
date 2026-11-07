@@ -435,6 +435,63 @@
   .exam-watermark span {
     white-space: nowrap;
   }
+
+  .obf-text {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .obf-layer {
+    display: inline;
+  }
+
+  .obf-layer .obf-word {
+    display: inline-block;
+    white-space: pre;
+    transform-origin: 50% 55%;
+  }
+
+  .obf-ghost {
+    position: absolute;
+    inset: 0;
+    display: block;
+    opacity: .22;
+    filter: blur(.55px);
+    pointer-events: none;
+    color: currentColor;
+  }
+
+  .obf-ghost .obf-word {
+    filter: blur(.35px);
+  }
+
+  .obf-question {
+    display: block;
+    width: 100%;
+  }
+
+  .obf-noise {
+    position: absolute;
+    inset: -2px;
+    width: calc(100% + 4px);
+    height: calc(100% + 4px);
+    pointer-events: none;
+    opacity: .16;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: .45;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .obf-filter {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+  }
 }
 
 @keyframes ui-orb-drift {

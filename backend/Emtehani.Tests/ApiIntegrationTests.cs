@@ -2320,4 +2320,109 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
         Assert.Equal("4", review!["answers"]![0]!["studentAnswer"]!.GetValue<string>());
         Assert.Equal("صح", review["answers"]![1]!["studentAnswer"]!.GetValue<string>());
     }
+
+    [Fact]
+    public async Task PerQuestionTimer_ExposesDeadlineLocksExpiredQuestionAndAutoAdvances()
+    {
+        var (teacher, _) = await RegisterAndLogin(Email("qtime-teacher"), "Teacher", "مدرس مؤقت السؤال");
+        var (student, _) = await RegisterAndLogin(Email("qtime-student"), "Student", "طالب مؤقت السؤال");
+        await EnrollStudent(teacher, student);
+
+        var create = await teacher.PostAsJsonAsync("/api/exams", new
+        {
+            title = "اختبار بمؤقت لكل سؤال",
+            description = "مؤقت",
+            durationMinutes = 30,
+            maxAttempts = 1,
+            allowResumeAfterFocusLoss = true,
+            shuffleQuestions = false,
+            shuffleOptions = false,
+            questionTimeLimitSeconds = 30,
+            stage = DefaultStage,
+            grade = DefaultGrade,
+            questions = new object[]
+            {
+                new { text = "سؤال أول", type = "MultipleChoice", options = new[] { "3", "4" }, correctAnswer = "4", points = 2, timeLimitSeconds = 15 },
+                new { text = "سؤال ثانٍ", type = "TrueFalse", options = Array.Empty<string>(), correctAnswer = "صح", points = 1 }
+            }
+        });
+        Assert.True(create.StatusCode == HttpStatusCode.Created, await create.Content.ReadAsStringAsync());
+        var examId = GuidValue((await ReadJson(create))["id"]);
+        Assert.Equal(HttpStatusCode.OK, (await teacher.PutAsync($"/api/exams/{examId}/publish", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await student.PostAsync($"/api/exams/{examId}/enter", null)).StatusCode);
+        await OpenExam(teacher, examId);
+
+        var started = await student.PostAsync($"/api/exams/{examId}/start", null);
+        Assert.Equal(HttpStatusCode.OK, started.StatusCode);
+        var startedJson = await ReadJson(started);
+        var submissionId = GuidValue(startedJson["id"]);
+        Assert.True(startedJson["timedMode"]!.GetValue<bool>());
+        Assert.InRange(startedJson["questionRemainingSeconds"]!.GetValue<int>(), 1, 15);
+
+        var paper = await student.GetFromJsonAsync<JsonNode>($"/api/exams/{examId}/paper");
+        Assert.True(paper!["timedMode"]!.GetValue<bool>());
+        Assert.NotNull(paper["questionDeadlineUtc"]);
+        Assert.Equal(15, paper["questions"]![0]!["timeLimitSeconds"]!.GetValue<int>());
+        Assert.Equal(30, paper["questions"]![1]!["timeLimitSeconds"]!.GetValue<int>());
+        var firstQuestionId = GuidValue(paper["questions"]![0]!["id"]);
+
+        var firstSave = await student.PutAsJsonAsync($"/api/submissions/{submissionId}/answers", new
+        {
+            answers = new[] { new { questionId = firstQuestionId, answerText = "4" } },
+            currentIndex = 0,
+            focusLossDetected = false
+        });
+        Assert.Equal(HttpStatusCode.OK, firstSave.StatusCode);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var submission = await db.Submissions.SingleAsync(x => x.Id == submissionId);
+            submission.QuestionStartedAtUtc = DateTime.UtcNow.AddSeconds(-16);
+            await db.SaveChangesAsync();
+        }
+
+        var advanced = await student.GetFromJsonAsync<JsonNode>($"/api/exams/{examId}/paper");
+        Assert.Equal(1, advanced!["currentQuestionIndex"]!.GetValue<int>());
+        Assert.Contains(advanced["lockedQuestionIds"]!.AsArray(), x => GuidValue(x) == firstQuestionId);
+        Assert.InRange(advanced["questionRemainingSeconds"]!.GetValue<int>(), 1, 30);
+
+        // The expired question is read-only: the save succeeds but the new answer is dropped.
+        var lockedSave = await student.PutAsJsonAsync($"/api/submissions/{submissionId}/answers", new
+        {
+            answers = new[] { new { questionId = firstQuestionId, answerText = "3" } },
+            currentIndex = 1,
+            focusLossDetected = false
+        });
+        Assert.Equal(HttpStatusCode.OK, lockedSave.StatusCode);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var answer = await db.Answers.SingleAsync(x => x.SubmissionId == submissionId && x.QuestionId == firstQuestionId);
+            Assert.Equal("4", answer.AnswerText);
+        }
+    }
+
+    [Fact]
+    public async Task ProctoringEvents_AreCountedAndVisibleToTeacher()
+    {
+        var (teacher, _) = await RegisterAndLogin(Email("proctor-teacher"), "Teacher", "مدرس الرقابة");
+        var (student, _) = await RegisterAndLogin(Email("proctor-student"), "Student", "طالب الرقابة");
+        await EnrollStudent(teacher, student);
+        var examId = await CreateCustomExam(teacher, "اختبار الرقابة");
+        Assert.Equal(HttpStatusCode.OK, (await student.PostAsync($"/api/exams/{examId}/enter", null)).StatusCode);
+        await OpenExam(teacher, examId);
+        var submissionId = await StartAttempt(student, examId);
+
+        foreach (var type in new[] { "focus-loss", "copy", "copy", "screenshot" })
+        {
+            var recorded = await student.PostAsJsonAsync($"/api/submissions/{submissionId}/events", new { type });
+            Assert.Equal(HttpStatusCode.OK, recorded.StatusCode);
+        }
+
+        var review = await teacher.GetFromJsonAsync<JsonNode>($"/api/submissions/{submissionId}/review");
+        Assert.Equal(1, review!["focusLossCount"]!.GetValue<int>());
+        Assert.Equal(2, review["copyAttemptCount"]!.GetValue<int>());
+        Assert.Equal(1, review["screenshotAttemptCount"]!.GetValue<int>());
+    }
 }

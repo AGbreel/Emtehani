@@ -56,7 +56,7 @@ let nextId = 1;
 const makeId = () => `q-${nextId++}`;
 
 function createQuestion(type = 'MultipleChoice') {
-  const base = { id: makeId(), type, text: '', points: 1 };
+  const base = { id: makeId(), type, text: '', points: 1, timeLimitSeconds: '' };
   if (type === 'MultipleChoice') return { ...base, options: ['', '', ''], correctAnswer: '' };
   if (type === 'TrueFalse') return { ...base, options: [], correctAnswer: 'صح' };
   if (type === 'Matching') return { ...base, pairs: [{ id: makeId(), left: '', right: '' }, { id: makeId(), left: '', right: '' }], correctAnswer: '' };
@@ -77,7 +77,7 @@ function QuestionEditor({ question, index, total, onChange, onRemove, onMove }) 
 
   function changeType(type) {
     const fresh = createQuestion(type);
-    onChange({ ...fresh, id: question.id, text: question.text, points: question.points });
+    onChange({ ...fresh, id: question.id, text: question.text, points: question.points, timeLimitSeconds: question.timeLimitSeconds });
   }
 
   function updateOption(optionIndex, value) {
@@ -119,7 +119,7 @@ function QuestionEditor({ question, index, total, onChange, onRemove, onMove }) 
       </div>
 
       <div className="grid gap-3.5 p-3.5 sm:p-4">
-        <div className="grid gap-3 sm:grid-cols-[1fr_150px_100px]">
+        <div className="grid gap-3 sm:grid-cols-[1fr_140px_90px_110px]">
           <Field label="نص السؤال" id={`${question.id}-text`}>
             <Textarea id={`${question.id}-text`} value={question.text} onChange={(event) => patch({ text: event.target.value })} placeholder="اكتب السؤال هنا بوضوح..." className="min-h-20 text-[14px]" />
           </Field>
@@ -130,6 +130,9 @@ function QuestionEditor({ question, index, total, onChange, onRemove, onMove }) 
           </Field>
           <Field label="الدرجة" id={`${question.id}-points`}>
             <Input id={`${question.id}-points`} type="number" min="0.5" step="0.5" value={question.points} onChange={(event) => patch({ points: Number(event.target.value) })} className="text-center" />
+          </Field>
+          <Field label="وقت السؤال (ث)" id={`${question.id}-time`} hint="اتركه فارغاً لاستخدام الوقت الافتراضي.">
+            <Input id={`${question.id}-time`} type="number" min="1" max="3600" placeholder="افتراضي" value={question.timeLimitSeconds ?? ''} onChange={(event) => patch({ timeLimitSeconds: event.target.value })} className="text-center" />
           </Field>
         </div>
 
@@ -225,6 +228,7 @@ export default function ExamForm({ token, onBack, onCreated }) {
   const [shuffleQuestions, setShuffleQuestions] = useState(true);
   const [shuffleOptions, setShuffleOptions] = useState(true);
   const [allowReviewPrevious, setAllowReviewPrevious] = useState(true);
+  const [questionTimeLimitSeconds, setQuestionTimeLimitSeconds] = useState(0);
   const [scheduledAt, setScheduledAt] = useState('');
   const [availableFrom, setAvailableFrom] = useState('');
   const [availableUntil, setAvailableUntil] = useState('');
@@ -261,16 +265,17 @@ export default function ExamForm({ token, onBack, onCreated }) {
   }
 
   function payloadFor(question) {
+    const timeLimitSeconds = Number(question.timeLimitSeconds) > 0 ? Number(question.timeLimitSeconds) : null;
     if (question.type === 'MultipleChoice') {
-      return { text: question.text.trim(), type: question.type, options: question.options.map((option) => option.trim()).filter(Boolean), correctAnswer: question.correctAnswer.trim(), points: Number(question.points) };
+      return { text: question.text.trim(), type: question.type, options: question.options.map((option) => option.trim()).filter(Boolean), correctAnswer: question.correctAnswer.trim(), points: Number(question.points), timeLimitSeconds };
     }
     if (question.type === 'TrueFalse') {
-      return { text: question.text.trim(), type: question.type, options: ['صح', 'خطأ'], correctAnswer: question.correctAnswer, points: Number(question.points) };
+      return { text: question.text.trim(), type: question.type, options: ['صح', 'خطأ'], correctAnswer: question.correctAnswer, points: Number(question.points), timeLimitSeconds };
     }
     if (question.type === 'Matching') {
-      return { text: question.text.trim(), type: question.type, options: question.pairs.map((pair) => `${pair.left.trim()}||${pair.right.trim()}`), correctAnswer: '', points: Number(question.points) };
+      return { text: question.text.trim(), type: question.type, options: question.pairs.map((pair) => `${pair.left.trim()}||${pair.right.trim()}`), correctAnswer: '', points: Number(question.points), timeLimitSeconds };
     }
-    return { text: question.text.trim(), type: question.type, options: [], correctAnswer: question.type === 'Essay' ? null : question.correctAnswer.trim(), points: Number(question.points) };
+    return { text: question.text.trim(), type: question.type, options: [], correctAnswer: question.type === 'Essay' ? null : question.correctAnswer.trim(), points: Number(question.points), timeLimitSeconds };
   }
 
   function validate() {
@@ -279,10 +284,12 @@ export default function ExamForm({ token, onBack, onCreated }) {
     if (!questions.length) return 'أضف سؤالاً واحداً على الأقل.';
     if (!Number.isFinite(Number(durationMinutes)) || Number(durationMinutes) < 1 || Number(durationMinutes) > 300) return 'مدة الامتحان يجب أن تكون بين دقيقة و300 دقيقة.';
     if (availableFrom && availableUntil && new Date(availableUntil) <= new Date(availableFrom)) return 'نهاية فترة الإتاحة يجب أن تكون بعد بدايتها.';
+    if (Number(questionTimeLimitSeconds) < 0 || Number(questionTimeLimitSeconds) > 3600) return 'وقت السؤال الافتراضي يجب أن يكون بين 0 و3600 ثانية.';
     for (let index = 0; index < questions.length; index++) {
       const question = questions[index];
       if (!question.text.trim()) return `السؤال ${index + 1}: اكتب نص السؤال.`;
       if (!Number(question.points) || Number(question.points) <= 0) return `السؤال ${index + 1}: الدرجة يجب أن تكون أكبر من صفر.`;
+      if (question.timeLimitSeconds !== '' && (Number(question.timeLimitSeconds) < 1 || Number(question.timeLimitSeconds) > 3600)) return `السؤال ${index + 1}: وقت السؤال يجب أن يكون بين 1 و3600 ثانية.`;
       if (question.type === 'MultipleChoice') {
         const options = question.options.map((option) => option.trim()).filter(Boolean);
         if (options.length < 2) return `السؤال ${index + 1}: أضف خيارين على الأقل.`;
@@ -318,6 +325,7 @@ export default function ExamForm({ token, onBack, onCreated }) {
           shuffleQuestions,
           shuffleOptions,
           allowReviewPrevious,
+          questionTimeLimitSeconds: Number(questionTimeLimitSeconds) > 0 ? Number(questionTimeLimitSeconds) : 0,
           scheduledAtUtc: cairoInputToUtcIso(scheduledAt),
           availableFromUtc: cairoInputToUtcIso(availableFrom),
           availableUntilUtc: cairoInputToUtcIso(availableUntil),
@@ -405,6 +413,11 @@ export default function ExamForm({ token, onBack, onCreated }) {
                 <Checkbox label="ترتيب اختيارات كل سؤال عشوائياً لكل طالب" checked={shuffleOptions} onChange={(event) => setShuffleOptions(event.target.checked)} />
                 <Checkbox label="السماح للطالب بالرجوع إلى سؤال أجاب عنه. عند الإيقاف، يُقفل السؤال بمجرد الانتقال منه." checked={allowReviewPrevious} onChange={(event) => setAllowReviewPrevious(event.target.checked)} />
               </div>
+              <div className="rounded-[12px] border border-line bg-surface-soft/60 p-3">
+                <Field label="وقت كل سؤال (بالثواني)" id="exam-question-time" hint="0 يعني بدون مؤقت. عند التفعيل يُقفل السؤال بانتهاء وقته وينتقل الطالب تلقائياً للسؤال التالي، ويمكنك تخصيص وقت مختلف لكل سؤال من بطاقة السؤال.">
+                  <Input id="exam-question-time" type="number" min="0" max="3600" value={questionTimeLimitSeconds} onChange={(event) => setQuestionTimeLimitSeconds(event.target.value)} />
+                </Field>
+              </div>
             </div>
           </Card>
 
@@ -447,6 +460,7 @@ export default function ExamForm({ token, onBack, onCreated }) {
                 ['الدرجة الكلية', `${formatNumber(totalPoints)} درجة`],
                 ['المدة', formatDuration(durationMinutes || 0)],
                 ['المحاولات', `${formatNumber(maxAttempts)} محاولة`],
+                ['مؤقت السؤال', Number(questionTimeLimitSeconds) > 0 ? `${formatNumber(questionTimeLimitSeconds)} ثانية` : 'بدون مؤقت'],
                 ['إظهار النتائج', resultsReleaseMode === 'AfterSubmission' ? 'بعد تسليم الطالب' : 'بعد انتهاء الامتحان'],
               ].map(([label, value]) => (
                 <div key={label} className="flex items-start justify-between gap-2 border-b border-line pb-2 last:border-0 last:pb-0">

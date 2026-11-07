@@ -63,6 +63,8 @@ public sealed class Exam
     public bool ShuffleOptions { get; set; } = true;
     /// <summary>When false, a student cannot reopen a question they already answered.</summary>
     public bool AllowReviewPrevious { get; set; } = true;
+    /// <summary>Default per-question countdown in seconds. 0 disables per-question timing.</summary>
+    public int QuestionTimeLimitSeconds { get; set; }
     public List<Question> Questions { get; set; } = [];
     public List<ExamParticipant> Participants { get; set; } = [];
 }
@@ -92,6 +94,8 @@ public sealed class Question
     public string? CorrectAnswer { get; set; }
     public decimal Points { get; set; } = 1;
     public int SortOrder { get; set; }
+    /// <summary>Overrides the exam-level countdown when greater than zero.</summary>
+    public int? TimeLimitSeconds { get; set; }
 }
 
 public sealed class Submission
@@ -115,6 +119,8 @@ public sealed class Submission
     public int ExtraTimeSeconds { get; set; }
     /// <summary>Last question position (in the student's shuffled order) the student has reached.</summary>
     public int CurrentQuestionIndex { get; set; }
+    /// <summary>When the student's current question countdown started. Null when timers are off.</summary>
+    public DateTime? QuestionStartedAtUtc { get; set; }
     // Immutable snapshots taken when the attempt starts. Later profile or exam edits
     // must never rewrite the academic context of an old attempt.
     public string? StageAtAttempt { get; set; }

@@ -23,7 +23,7 @@ export function useExamLockdown({ token, submissionId, active = true, onViolatio
   useEffect(() => {
     if (!active || typeof document === 'undefined') return undefined;
     let disposed = false;
-    const lastRecorded = { copy: 0, screenshot: 0 };
+    const lastRecorded = { copy: 0, screenshot: 0, 'focus-loss': 0 };
 
     document.body.classList.add('exam-lockdown');
 
@@ -135,8 +135,14 @@ export function useExamLockdown({ token, submissionId, active = true, onViolatio
 
     function onBlur() {
       // Screenshot and recording tools steal focus before capturing. Blank the
-      // paper so the captured frame contains no question content.
-      if (document.visibilityState === 'visible' && !disposed) setShielded(true);
+      // paper so the captured frame contains no question content. Tabs that are
+      // truly hidden are counted by the page visibility listener instead, so the
+      // same switch is not recorded twice.
+      if (document.visibilityState === 'visible' && !disposed) {
+        record('focus-loss');
+        notify();
+        setShielded(true);
+      }
     }
 
     function onFocus() {

@@ -125,6 +125,12 @@ public static class ExamWorkflowSchema
                     ALTER TABLE [Exams] ADD [AllowReviewPrevious] bit NOT NULL CONSTRAINT [DF_Exams_AllowReviewPrevious] DEFAULT 1;
                 IF COL_LENGTH('dbo.Submissions', 'CurrentQuestionIndex') IS NULL
                     ALTER TABLE [Submissions] ADD [CurrentQuestionIndex] int NOT NULL CONSTRAINT [DF_Submissions_CurrentQuestionIndex] DEFAULT 0;
+                IF COL_LENGTH('dbo.Exams', 'QuestionTimeLimitSeconds') IS NULL
+                    ALTER TABLE [Exams] ADD [QuestionTimeLimitSeconds] int NOT NULL CONSTRAINT [DF_Exams_QuestionTimeLimitSeconds] DEFAULT 0;
+                IF COL_LENGTH('dbo.Questions', 'TimeLimitSeconds') IS NULL
+                    ALTER TABLE [Questions] ADD [TimeLimitSeconds] int NULL;
+                IF COL_LENGTH('dbo.Submissions', 'QuestionStartedAtUtc') IS NULL
+                    ALTER TABLE [Submissions] ADD [QuestionStartedAtUtc] datetime2 NULL;
                 """, cancellationToken);
             await db.Database.ExecuteSqlRawAsync("""
                 IF COL_LENGTH('dbo.Users', 'RefreshTokenHash') IS NULL
@@ -525,6 +531,9 @@ public static class ExamWorkflowSchema
                 ALTER TABLE "Exams" ADD COLUMN IF NOT EXISTS "ShuffleOptions" boolean NOT NULL DEFAULT TRUE;
                 ALTER TABLE "Exams" ADD COLUMN IF NOT EXISTS "AllowReviewPrevious" boolean NOT NULL DEFAULT TRUE;
                 ALTER TABLE "Submissions" ADD COLUMN IF NOT EXISTS "CurrentQuestionIndex" integer NOT NULL DEFAULT 0;
+                ALTER TABLE "Exams" ADD COLUMN IF NOT EXISTS "QuestionTimeLimitSeconds" integer NOT NULL DEFAULT 0;
+                ALTER TABLE "Questions" ADD COLUMN IF NOT EXISTS "TimeLimitSeconds" integer NULL;
+                ALTER TABLE "Submissions" ADD COLUMN IF NOT EXISTS "QuestionStartedAtUtc" timestamp with time zone NULL;
                 ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "RefreshTokenHash" character varying(64) NULL;
                 ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "RefreshTokenExpiresUtc" timestamp with time zone NULL;
                 ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "RefreshTokenCreatedAtUtc" timestamp with time zone NULL;

@@ -140,7 +140,7 @@ export default function ReviewDetailPage({ token, user, submissionId, onBack, on
 
           <div className="grid gap-1.5 text-[11.5px]">
             <div className="flex items-center gap-2 text-muted"><UserRound size={13} />{isTeacher ? data.studentName : data.teacherName || 'المدرس'}</div>
-            {data.focusLossDetected ? <div className="flex items-center gap-2 text-warning"><ShieldAlert size={13} />رُصد خروج من الصفحة</div> : null}
+            {(data.focusLossDetected || data.focusLossCount) ? <div className="flex items-center gap-2 text-warning"><ShieldAlert size={13} />خروج من شاشة الامتحان ({formatNumber(data.focusLossCount || 1)})</div> : null}
             {data.copyAttemptCount ? <div className="flex items-center gap-2 text-warning"><ScanEye size={13} />محاولة نسخ ({formatNumber(data.copyAttemptCount)})</div> : null}
             {data.screenshotAttemptCount ? <div className="flex items-center gap-2 text-warning"><EyeOff size={13} />محاولة تصوير ({formatNumber(data.screenshotAttemptCount)})</div> : null}
             {!flags ? <div className="flex items-center gap-2 text-emerald"><GraduationCap size={13} />لا توجد مؤشرات مخالفة</div> : null}

@@ -58,11 +58,11 @@ public record TeacherProfileUpdateRequest(
 public record StudentLinkDecisionRequest(string Action);
 public record SubscriptionSelectRequest(string PlanCode, string? Method = null, string? Reference = null, string? ReceiptUrl = null, int Periods = 1);
 public record AdminSubscriptionSettingsRequest(string[] Features);
-public record QuestionInput(string Text, string Type, string[]? Options, string? CorrectAnswer, decimal Points = 1);
-public record ExamCreateRequest(string Title, string? Description, int DurationMinutes, List<QuestionInput> Questions, int MaxAttempts = 1, bool AllowResumeAfterFocusLoss = true, DateTime? ScheduledAtUtc = null, DateTime? AvailableFromUtc = null, DateTime? AvailableUntilUtc = null, string? Stage = null, string? Grade = null, string? ResultsReleaseMode = null, bool ShuffleQuestions = true, bool ShuffleOptions = true, bool AllowReviewPrevious = true);
+public record QuestionInput(string Text, string Type, string[]? Options, string? CorrectAnswer, decimal Points = 1, int? TimeLimitSeconds = null);
+public record ExamCreateRequest(string Title, string? Description, int DurationMinutes, List<QuestionInput> Questions, int MaxAttempts = 1, bool AllowResumeAfterFocusLoss = true, DateTime? ScheduledAtUtc = null, DateTime? AvailableFromUtc = null, DateTime? AvailableUntilUtc = null, string? Stage = null, string? Grade = null, string? ResultsReleaseMode = null, bool ShuffleQuestions = true, bool ShuffleOptions = true, bool AllowReviewPrevious = true, int QuestionTimeLimitSeconds = 0);
 public record AnswerInput(Guid QuestionId, string AnswerText);
 public record SubmitRequest(List<AnswerInput> Answers, bool FocusLossDetected = false, int? CurrentIndex = null);
-public record ExamSettingsRequest(bool ShuffleQuestions, bool ShuffleOptions, bool AllowReviewPrevious);
+public record ExamSettingsRequest(bool ShuffleQuestions, bool ShuffleOptions, bool AllowReviewPrevious, int? QuestionTimeLimitSeconds = null);
 public record EssayGradeRequest(decimal AwardedPoints, string? Feedback);
 public record ResendVerificationRequest(string Email);
 public record ForgotPasswordRequest(string Email);
@@ -72,7 +72,7 @@ public record NotificationPreferenceRequest(bool Messages, bool Exams, bool Sess
     bool Announcements, bool System, bool SoundEnabled);
 public record ExamStateRequest(string Action);
 public record StudentCodeRequest(string Code);
-public record ExamParticipantView(Guid Id, string StudentName, string Email, string Code, string Status, DateTime? JoinedAtUtc, DateTime? LastSeenAtUtc, DateTime? SubmittedAtUtc, decimal? Score, decimal? MaxScore, int? RemainingSeconds);
+public record ExamParticipantView(Guid Id, string StudentName, string Email, string Code, string Status, DateTime? JoinedAtUtc, DateTime? LastSeenAtUtc, DateTime? SubmittedAtUtc, decimal? Score, decimal? MaxScore, int? RemainingSeconds, int FocusLossCount = 0, int CopyAttemptCount = 0, int ScreenshotAttemptCount = 0);
 public record ExamParticipantGenerateRequest(Guid[]? StudentIds = null);
 public record TeacherJoinDecisionRequest(string Action);
 public record TeacherStudentExamBanRequest(Guid ExamId);

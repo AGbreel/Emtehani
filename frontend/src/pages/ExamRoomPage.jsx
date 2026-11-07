@@ -40,6 +40,7 @@ import {
 } from '../components/ui';
 import SessionCountdown from '../components/SessionCountdown';
 import ExamWatermark from '../components/ExamWatermark';
+import ObfuscatedText from '../components/ObfuscatedText';
 import { request } from '../lib/api';
 import { useExamLockdown } from '../lib/useExamLockdown';
 import { formatNumber, formatTimer } from '../lib/format';
@@ -122,7 +123,7 @@ function QuestionField({ question, index, value, onChange }) {
 
       <fieldset className="p-4 sm:p-5">
         <legend className="sr-only">السؤال {index + 1}</legend>
-        <p className="text-[15px] font-semibold leading-8 text-ink">{question.text}</p>
+        <p className="text-[15px] font-semibold leading-8 text-ink"><ObfuscatedText className="obf-question" text={question.text} /></p>
 
         {question.type === 'MultipleChoice' ? (
           <div className="mt-4 grid gap-2">
@@ -132,7 +133,7 @@ function QuestionField({ question, index, value, onChange }) {
                 <label key={`${option}-${optionIndex}`} className={cn('flex min-h-12 cursor-pointer items-center gap-3 rounded-[11px] border px-3.5 py-3 text-[14px] leading-6 transition', selected ? 'border-primary bg-primary-soft text-primary' : 'border-line bg-surface-soft text-ink hover:border-line-strong')}>
                   <input type="radio" name={id} value={option} checked={selected} onChange={() => onChange(option)} className="sr-only" />
                   <span className={cn('grid size-6 shrink-0 place-items-center rounded-full border text-[10.5px] font-bold', selected ? 'border-primary bg-primary text-white' : 'border-line-strong bg-surface text-muted')}>{selected ? <Check size={12} /> : optionIndex + 1}</span>
-                  <span className="flex-1">{option}</span>
+                  <span className="flex-1"><ObfuscatedText text={option} /></span>
                 </label>
               );
             })}
@@ -206,7 +207,10 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
   const [lockedIds, setLockedIds] = useState(() => new Set(Array.isArray(paper.lockedQuestionIds) ? paper.lockedQuestionIds : []));
   const [notice, setNotice] = useState('');
   const [reviewMode, setReviewMode] = useState(false);
+  const [timedMode, setTimedMode] = useState(Boolean(paper.timedMode));
+  const [questionDeadlineUtc, setQuestionDeadlineUtc] = useState(paper.questionDeadlineUtc || null);
   const frozenRemainingRef = useRef(null);
+  const advancingRef = useRef(false);
   const restrictNavigation = paper.allowReviewPrevious === false;
 
   const answersRef = useRef(answers);
@@ -235,6 +239,17 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
   }, [deadlineUtc, clockOffset, clockTick, remainingFallback]);
   const paused = examStatus === 'Paused';
   const displayedRemaining = paused ? (frozenRemainingRef.current ?? remaining) : remaining;
+  const questionRemaining = useMemo(() => {
+    if (!questionDeadlineUtc) return null;
+    return remainingSecondsFromDeadline(questionDeadlineUtc, clockOffset);
+    // clockTick drives a re-read every second, exactly like the exam countdown.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questionDeadlineUtc, clockOffset, clockTick]);
+  const questionLimit = Number(questions[currentIndex]?.timeLimitSeconds) || 0;
+  const questionProgress = timedMode && questionLimit > 0 && questionRemaining !== null
+    ? Math.min(100, Math.max(0, (questionRemaining / questionLimit) * 100))
+    : 0;
+  const questionLow = timedMode && questionRemaining !== null && questionRemaining <= 10;
   useEffect(() => {
     if (paused) {
       if (frozenRemainingRef.current === null) frozenRemainingRef.current = remaining;
@@ -289,8 +304,12 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
           return next;
         });
       }
+      if (result?.timedMode !== undefined) setTimedMode(Boolean(result.timedMode));
+      if (result?.questionDeadlineUtc !== undefined) setQuestionDeadlineUtc(result.questionDeadlineUtc || null);
       if (Number.isInteger(result?.currentQuestionIndex)) {
-        setCurrentIndex((previous) => Math.max(previous, result.currentQuestionIndex));
+        const nextIndex = result.currentQuestionIndex;
+        setCurrentIndex((previous) => Math.max(previous, nextIndex));
+        if (nextIndex > currentIndexRef.current) currentIndexRef.current = nextIndex;
       }
       if (answerVersionRef.current === version) {
         dirtyRef.current = false;
@@ -343,6 +362,13 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
         // The server deadline is authoritative. Never rebuild it by decrementing the
         // previous value, so reconnects cannot reset or fast-forward the countdown.
         if (result.deadlineUtc) setDeadlineUtc(result.deadlineUtc);
+        if (result.timedMode !== undefined) setTimedMode(Boolean(result.timedMode));
+        if (result.questionDeadlineUtc !== undefined) setQuestionDeadlineUtc(result.questionDeadlineUtc || null);
+        if (Number.isInteger(result.currentQuestionIndex) && result.currentQuestionIndex > currentIndexRef.current) {
+          currentIndexRef.current = result.currentQuestionIndex;
+          setCurrentIndex(result.currentQuestionIndex);
+          setReviewMode(false);
+        }
         if (result.participantStatus === 'Submitted' && !submittedRef.current) {
           submittedRef.current = true;
           onSubmitted({ id: submissionId, alreadySubmitted: true });
@@ -391,6 +417,41 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
     return () => window.clearInterval(autosave);
   }, [save, paused]);
 
+  const advanceTimedQuestion = useCallback(async () => {
+    if (advancingRef.current || submittedRef.current) return;
+    advancingRef.current = true;
+    try {
+      const last = Math.max(0, questions.length - 1);
+      const next = Math.min(currentIndexRef.current + 1, last);
+      if (next === currentIndexRef.current) {
+        await submit(true);
+        return;
+      }
+      currentIndexRef.current = next;
+      setCurrentIndex(next);
+      setReviewMode(false);
+      setNotice('انتهى وقت هذا السؤال، وتم قفله والانتقال تلقائياً إلى السؤال التالي.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // Persisting the new index is what resets the server-side question window.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (await save(true)) break;
+        await new Promise((resolve) => window.setTimeout(resolve, 900));
+      }
+    } finally {
+      advancingRef.current = false;
+    }
+  }, [questions.length, save, submit]);
+
+  useEffect(() => {
+    if (!timedMode || paused) return undefined;
+    const timer = window.setInterval(() => {
+      if (submittedRef.current || !questionDeadlineUtc) return;
+      const left = remainingSecondsFromDeadline(questionDeadlineUtc, clockOffset);
+      if (left === 0) advanceTimedQuestion();
+    }, 500);
+    return () => window.clearInterval(timer);
+  }, [timedMode, paused, questionDeadlineUtc, clockOffset, advanceTimedQuestion]);
+
   useEffect(() => {
     async function record(type) {
       try {
@@ -426,7 +487,15 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
     const next = Math.min(Math.max(0, index), questions.length - 1);
     const target = questions[next];
     if (target && lockedIdsRef.current.has(target.id)) {
-      setNotice('لا يمكن الرجوع إلى سؤال أجاب عنه الطالب وانتقل منه، وفق إعدادات المدرس.');
+      setNotice('لا يمكن الرجوع إلى سؤال انتهى وقته أو تم قفله، وفق إعدادات المدرس.');
+      return;
+    }
+    if (timedMode && next < currentIndexRef.current) {
+      setNotice('الأسئلة التي انتقلت منها في الوضع الموقوت مقفلة ولا يمكن الرجوع إليها.');
+      return;
+    }
+    if (timedMode && next > currentIndexRef.current + 1) {
+      setNotice('الوضع الموقوت ينتقل سؤالاً واحداً في كل مرة.');
       return;
     }
     // When review is disabled, leaving an answered question locks it for good.
@@ -576,7 +645,7 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
                           <Badge tone="neutral">{typeLabels[question.type] || question.type}</Badge>
                           <Badge tone={locked ? 'neutral' : value ? 'emerald' : 'warning'}>{locked ? 'مقفل' : value ? 'تمت الإجابة' : 'بدون إجابة'}</Badge>
                         </span>
-                        <span className="mt-1 block truncate text-[11.5px] text-muted">{question.text}</span>
+                        <span className="mt-1 block truncate text-[11.5px] text-muted"><ObfuscatedText text={question.text} /></span>
                         {value ? <span className="mt-1 block truncate text-[10.5px] text-subtle">إجابتك: {value.slice(0, 120)}</span> : null}
                       </span>
                       <span className={cn('shrink-0 self-center text-[10.5px] font-bold', locked ? 'text-subtle' : 'text-primary')}>{locked ? 'مقفل' : 'عرض'}</span>
@@ -608,6 +677,18 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
 
             <div className="grid items-start gap-4 xl:grid-cols-[1fr_280px]">
               <div>
+                {timedMode && currentQuestion ? (
+                  <div className={cn('mb-3 rounded-[14px] border px-3.5 py-3 transition', questionLow ? 'border-danger/35 bg-danger-soft/40' : 'border-line bg-surface')}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1.5 text-[12px] font-bold text-muted"><TimerReset size={14} className={questionLow ? 'text-danger' : 'text-primary'} />وقت هذا السؤال</span>
+                      <span className={cn('ui-number text-[19px] font-bold leading-none', questionLow ? 'text-danger' : 'text-ink')}>
+                        {questionRemaining === null ? '—' : formatTimer(questionRemaining)}
+                      </span>
+                    </div>
+                    <ProgressBar value={questionProgress} tone={questionLow ? 'danger' : 'warning'} className="mt-2.5" />
+                    <p className="mt-2 text-[10.5px] leading-5 text-subtle">عند انتهاء الوقت يُقفل السؤال تلقائياً وتنتقل إلى السؤال التالي. لا تغلق الصفحة حتى لا يضيع وقتك.</p>
+                  </div>
+                ) : null}
                 {currentQuestion ? (
                   <QuestionField
                     key={currentQuestion.id}
@@ -621,7 +702,7 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
                 )}
 
                 <div className="mt-3 flex items-center justify-between gap-2 rounded-[13px] border border-line bg-surface p-2.5">
-                  <Button variant="secondary" size="sm" icon={ChevronRight} disabled={currentIndex === 0} onClick={() => goToQuestion(currentIndex - 1)}>السابق</Button>
+                  <Button variant="secondary" size="sm" icon={ChevronRight} disabled={currentIndex === 0 || timedMode} onClick={() => goToQuestion(currentIndex - 1)}>السابق</Button>
                   <div className="flex flex-col items-center">
                     <span className="text-[11.5px] font-bold text-ink">السؤال {formatNumber(questions.length ? currentIndex + 1 : 0)} من {formatNumber(questions.length)}</span>
                     <span className={cn('text-[10px] font-bold', isCurrentAnswered ? 'text-emerald' : 'text-warning')}>{isCurrentAnswered ? 'تمت الإجابة' : 'بدون إجابة'}</span>

@@ -42,6 +42,24 @@ import { downloadBlob, formatDate, formatDuration, formatNumber, formatTimer, sc
 
 const statusOrder = ['Active', 'Waiting', 'Disconnected', 'Invited', 'Submitted', 'Absent'];
 
+function ViolationCounts({ participant }) {
+  const items = [
+    ['خروج', Number(participant.focusLossCount) || 0],
+    ['نسخ', Number(participant.copyAttemptCount) || 0],
+    ['تصوير', Number(participant.screenshotAttemptCount) || 0],
+  ].filter(([, value]) => value > 0);
+  if (!items.length) return <span className="text-[11px] text-subtle">—</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {items.map(([label, value]) => (
+        <span key={label} className="inline-flex items-center gap-1 rounded-full border border-danger/20 bg-danger-soft px-2 py-0.5 text-[9.5px] font-bold text-danger">
+          {label} <span className="ui-number">{formatNumber(value)}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export default function TeacherExamDetail({ token, exam: initialExam, onBack, onOpenResults }) {
   const [exam, setExam] = useState(initialExam);
   const [participants, setParticipants] = useState([]);
@@ -61,6 +79,7 @@ export default function TeacherExamDetail({ token, exam: initialExam, onBack, on
   const [shuffleQuestions, setShuffleQuestions] = useState(initialExam?.shuffleQuestions ?? true);
   const [shuffleOptions, setShuffleOptions] = useState(initialExam?.shuffleOptions ?? true);
   const [allowReviewPrevious, setAllowReviewPrevious] = useState(initialExam?.allowReviewPrevious ?? true);
+  const [questionTimeLimitSeconds, setQuestionTimeLimitSeconds] = useState(initialExam?.questionTimeLimitSeconds ?? 0);
 
   function toLocalInput(value) {
     return toCairoInputValue(value);
@@ -94,7 +113,7 @@ export default function TeacherExamDetail({ token, exam: initialExam, onBack, on
     if (!initialExam?.id) return;
     let active = true;
     request(`/api/exams/${initialExam.id}`, { token })
-      .then((meta) => { if (active) { setExam((current) => ({ ...current, ...meta, status: current.status === 'Active' || current.status === 'Paused' ? current.status : meta.status })); setAvailableFrom(toLocalInput(meta.availableFromUtc)); setAvailableUntil(toLocalInput(meta.availableUntilUtc)); setResultsReleaseMode(meta.resultsReleaseMode || ''); setShuffleQuestions(meta.shuffleQuestions !== false); setShuffleOptions(meta.shuffleOptions !== false); setAllowReviewPrevious(meta.allowReviewPrevious !== false); } })
+      .then((meta) => { if (active) { setExam((current) => ({ ...current, ...meta, status: current.status === 'Active' || current.status === 'Paused' ? current.status : meta.status })); setAvailableFrom(toLocalInput(meta.availableFromUtc)); setAvailableUntil(toLocalInput(meta.availableUntilUtc)); setResultsReleaseMode(meta.resultsReleaseMode || ''); setShuffleQuestions(meta.shuffleQuestions !== false); setShuffleOptions(meta.shuffleOptions !== false); setAllowReviewPrevious(meta.allowReviewPrevious !== false); setQuestionTimeLimitSeconds(meta.questionTimeLimitSeconds ?? 0); } })
       .catch(() => {});
     return () => { active = false; };
   }, [token, initialExam?.id]);
@@ -205,10 +224,10 @@ export default function TeacherExamDetail({ token, exam: initialExam, onBack, on
       const result = await request(`/api/exams/${exam.id}/settings`, {
         token,
         method: 'PUT',
-        body: JSON.stringify({ shuffleQuestions, shuffleOptions, allowReviewPrevious }),
+        body: JSON.stringify({ shuffleQuestions, shuffleOptions, allowReviewPrevious, questionTimeLimitSeconds: Number(questionTimeLimitSeconds) > 0 ? Number(questionTimeLimitSeconds) : 0 }),
       });
       setExam((current) => ({ ...current, ...result }));
-      setNotice('تم تحديث إعدادات عرض الأسئلة.');
+      setNotice('تم تحديث إعدادات عرض الأسئلة ومؤقت الأسئلة.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -332,12 +351,13 @@ export default function TeacherExamDetail({ token, exam: initialExam, onBack, on
           ) : (
             <>
               <div className="hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[820px] text-right">
+                <table className="w-full min-w-[940px] text-right">
                   <thead>
                     <tr className="border-b border-line bg-surface-soft/60 text-[11px] font-extrabold text-muted">
                       <th className="px-5 py-3">الطالب</th>
                       <th className="px-3 py-3">الحالة</th>
                       <th className="px-3 py-3">الوقت المتبقي</th>
+                      <th className="px-3 py-3">المخالفات</th>
                       <th className="px-3 py-3">الدرجة</th>
                       <th className="px-5 py-3" />
                     </tr>
@@ -360,6 +380,7 @@ export default function TeacherExamDetail({ token, exam: initialExam, onBack, on
                           <td className="px-3 py-3">
                             {remaining == null ? <span className="text-[11.5px] text-subtle">—</span> : <span className={cn('ui-number text-[12px] font-bold', remaining < 300 ? 'text-danger' : 'text-ink')}>{formatTimer(remaining)}</span>}
                           </td>
+                          <td className="px-3 py-3"><ViolationCounts participant={participant} /></td>
                           <td className="px-3 py-3 text-[11.5px] text-muted">{participant.score != null ? scoreText(participant.score, participant.maxScore) : '—'}</td>
                           <td className="px-5 py-3" />
                         </tr>
@@ -381,6 +402,9 @@ export default function TeacherExamDetail({ token, exam: initialExam, onBack, on
                         </div>
                         <StatusChip status={participant.status} />
                       </div>
+                      {(participant.focusLossCount || participant.copyAttemptCount || participant.screenshotAttemptCount) ? (
+                        <div className="mt-2"><ViolationCounts participant={participant} /></div>
+                      ) : null}
                       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-2.5">
                         <span className="text-[10.5px] text-subtle">الطلاب المؤهلون يظهرون تلقائياً</span>
                         <div className="flex items-center gap-2">
@@ -402,6 +426,11 @@ export default function TeacherExamDetail({ token, exam: initialExam, onBack, on
               <Checkbox label="ترتيب الأسئلة عشوائياً لكل طالب" checked={shuffleQuestions} onChange={(event) => setShuffleQuestions(event.target.checked)} />
               <Checkbox label="ترتيب الاختيارات عشوائياً لكل طالب" checked={shuffleOptions} onChange={(event) => setShuffleOptions(event.target.checked)} />
               <Checkbox label="السماح بالرجوع إلى سؤال تمت الإجابة عنه" checked={allowReviewPrevious} onChange={(event) => setAllowReviewPrevious(event.target.checked)} />
+            </div>
+            <div className="mt-3">
+              <Field label="وقت كل سؤال (ثانية)" id="exam-question-time-detail" hint="0 = بدون مؤقت. عند التفعيل يُقفل السؤال بانتهاء وقته وينتقل الطالب تلقائياً للسؤال التالي.">
+                <Input id="exam-question-time-detail" type="number" min="0" max="3600" value={questionTimeLimitSeconds} onChange={(event) => setQuestionTimeLimitSeconds(event.target.value)} disabled={settingsLocked} />
+              </Field>
             </div>
             <Button size="sm" icon={Save} className="mt-3 w-full" loading={busy === 'settings'} disabled={settingsLocked} onClick={saveExamSettings}>حفظ إعدادات العرض</Button>
             <p className="mt-2 text-[10.5px] leading-5 text-subtle">
