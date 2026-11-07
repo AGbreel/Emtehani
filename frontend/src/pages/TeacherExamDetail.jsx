@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Save,
   Send,
+  ShieldCheck,
   Square,
   TimerReset,
   Users,
@@ -60,7 +61,7 @@ function ViolationCounts({ participant }) {
   );
 }
 
-export default function TeacherExamDetail({ token, exam: initialExam, onBack, onOpenResults }) {
+export default function TeacherExamDetail({ token, exam: initialExam, onBack, onOpenResults, onOpenProctoring }) {
   const [exam, setExam] = useState(initialExam);
   const [participants, setParticipants] = useState([]);
   const [counts, setCounts] = useState(null);
@@ -263,6 +264,7 @@ export default function TeacherExamDetail({ token, exam: initialExam, onBack, on
         action={
           <>
             <Button variant="secondary" size="sm" icon={RefreshCw} loading={refreshing} onClick={() => load(true)}>تحديث</Button>
+            {onOpenProctoring ? <Button variant="secondary" size="sm" icon={ShieldCheck} onClick={() => onOpenProctoring(exam)}>مراقبة الطلاب</Button> : null}
             {exam.status === 'Active' ? (
               <>
                 <Button variant="warning" size="sm" icon={Clock3} loading={busy === 'pause'} onClick={() => runState('pause', 'تم إيقاف الجلسة مؤقتاً. الوقت متوقف الآن.')}>إيقاف مؤقت</Button>

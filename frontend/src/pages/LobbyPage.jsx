@@ -26,15 +26,21 @@ export default function LobbyPage({ token, joined, onStarted, onResults, onExit 
   const [phase, setPhase] = useState('waiting');
   const startRef = useRef(false);
   const blockedRef = useRef(false);
+  const consentedRef = useRef(false);
+  const cameraAgreedRef = useRef(false);
+  const [pledges, setPledges] = useState({ stay: false, honest: false, rules: false });
+  const [cameraAgreed, setCameraAgreed] = useState(false);
+  const proctoringEnabled = Boolean(session.proctoring?.enabled);
+  const cameraRequired = proctoringEnabled && Boolean(session.proctoring?.enableCamera);
 
   const finish = useCallback(() => {
     if (blockedRef.current) return;
     if (session.participantStatus === 'Submitted') setPhase('submitted');
     else if (session.examStatus === 'Finished') setPhase('finished');
     else if (session.examStatus === 'Paused') setPhase('paused');
-    else if (session.examStatus === 'Active') setPhase('active');
+    else if (session.examStatus === 'Active') setPhase(proctoringEnabled && !consentedRef.current ? 'consent' : 'active');
     else setPhase('waiting');
-  }, [session]);
+  }, [session, proctoringEnabled]);
 
   useEffect(() => { finish(); }, [finish]);
 
@@ -46,6 +52,9 @@ export default function LobbyPage({ token, joined, onStarted, onResults, onExit 
     try {
       await request(`/api/exams/${session.examId}/start`, { token, method: 'POST' });
       const paper = await request(`/api/exams/${session.examId}/paper`, { token });
+      // Explicit consent timestamp flows into the proctoring session so camera
+      // snapshots are only ever tied to a consenting attempt.
+      paper.proctoringConsent = cameraAgreedRef.current;
       onStarted(paper);
     } catch (err) {
       startRef.current = false;
@@ -62,7 +71,7 @@ export default function LobbyPage({ token, joined, onStarted, onResults, onExit 
   }, [token, session.examId, onStarted]);
 
   useEffect(() => {
-    if (phase === 'submitted' || phase === 'finished' || phase === 'blocked') return undefined;
+    if (phase === 'submitted' || phase === 'finished' || phase === 'blocked' || phase === 'consent') return undefined;
     const poll = window.setInterval(async () => {
       try {
         const result = await request(`/api/exams/${session.examId}/session`, { token });
@@ -71,7 +80,7 @@ export default function LobbyPage({ token, joined, onStarted, onResults, onExit 
         if (result.participantStatus === 'Submitted') setPhase('submitted');
         else if (result.examStatus === 'Finished') setPhase('finished');
         else if (result.examStatus === 'Paused') setPhase('paused');
-        else if (result.examStatus === 'Active' && !startRef.current && !blockedRef.current) begin();
+        else if (result.examStatus === 'Active' && !startRef.current && !blockedRef.current && (!result.proctoring?.enabled || consentedRef.current)) begin();
       } catch (err) {
         if (err.status === 401 || err.status === 403) setError(err.message);
       }
@@ -80,8 +89,22 @@ export default function LobbyPage({ token, joined, onStarted, onResults, onExit 
   }, [phase, session.examId, token, begin]);
 
   useEffect(() => {
-    if (phase === 'active' && !startRef.current) begin();
-  }, [phase, begin]);
+    if (phase === 'active' && !startRef.current && (!proctoringEnabled || consentedRef.current)) begin();
+  }, [phase, begin, proctoringEnabled]);
+
+  const pledgeList = [
+    ['stay', 'أتعهد بالبقاء داخل صفحة الامتحان وعدم تبديل التبويبات أو النوافذ إلا للضرورة القصوى.'],
+    ['honest', 'أتعهد بعدم استخدام أي وسيلة غش، وأن كل إجابة تعبير عن عملي الخاص.'],
+    ['rules', 'أفهم أن كل خروج عن الصفحة أو محاولة نسخ يُسجَّل باسمي ويظهر للمدرس فوراً.'],
+  ];
+  const allPledges = pledgeList.every(([key]) => pledges[key]);
+  const canStart = allPledges && (!cameraRequired || cameraAgreed);
+
+  function startWithConsent() {
+    consentedRef.current = true;
+    cameraAgreedRef.current = cameraRequired ? cameraAgreed : false;
+    begin();
+  }
 
   if (phase === 'submitted') {
     return (
@@ -130,6 +153,71 @@ export default function LobbyPage({ token, joined, onStarted, onResults, onExit 
           <div className="mx-auto mt-5 inline-flex items-center gap-2 rounded-full border border-warning/20 bg-warning-soft px-3 py-1.5 text-[10px] font-bold text-warning"><Hourglass size={13} />{formatTimer(session.remainingSeconds || 0)} متبقٍ عند الاستئناف</div>
           {error ? <Alert tone="warning" className="mt-4 text-right" onClose={() => setError('')}>{error}</Alert> : null}
           <div className="mt-5 flex justify-center"><Button variant="secondary" size="sm" icon={DoorOpen} onClick={onExit}>الخروج من الصفحة</Button></div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (phase === 'consent') {
+    return (
+      <div className="mx-auto max-w-2xl">
+        <Card className="relative overflow-hidden p-6 sm:p-8">
+          <div className="pointer-events-none absolute -left-10 -top-10 size-44 rounded-full bg-primary-soft blur-3xl" />
+          <div className="relative">
+            <div className="mx-auto grid size-16 place-items-center rounded-full bg-primary-soft text-primary"><ShieldCheck size={28} /></div>
+            <Badge tone="primary" className="mt-4">المراقبة مفعّلة لهذا الامتحان</Badge>
+            <h1 className="mt-3 text-center font-display text-[clamp(1.4rem,3vw,1.9rem)] font-semibold tracking-[-0.04em] text-ink">قواعد المراقبة ومنع الغش</h1>
+            <p className="mx-auto mt-2 max-w-md text-center text-[13px] leading-7 text-muted">اقرأ التعهدات التالية بعناية قبل بدء الامتحان. سيُسجَّل موافقتك مع وقت بدء المحاولة.</p>
+
+            <div className="mt-5 grid gap-2.5">
+              <div className="rounded-[13px] border border-line bg-surface-soft p-3.5">
+                <p className="text-[12px] font-bold text-ink">ما الذي يتم مراقبته؟</p>
+                <ul className="mt-2 grid gap-1.5 text-[12px] leading-6 text-muted">
+                  <li className="flex gap-1.5"><CheckCircle2 size={13} className="mt-1 shrink-0 text-emerald" />تبديل التبويبات أو النوافذ والخروج من صفحة الامتحان.</li>
+                  <li className="flex gap-1.5"><CheckCircle2 size={13} className="mt-1 shrink-0 text-emerald" />محاولات النسخ واللصق والقص واختصارات لوحة المفاتيح.</li>
+                  {session.proctoring?.requireFullscreen ? <li className="flex gap-1.5"><CheckCircle2 size={13} className="mt-1 shrink-0 text-emerald" />الخروج من وضع ملء الشاشة المطلوب أثناء الامتحان.</li> : null}
+                  {cameraRequired ? <li className="flex gap-1.5"><CheckCircle2 size={13} className="mt-1 shrink-0 text-emerald" />لقطات دورية من الكاميرا بعد موافقتك الصريحة.</li> : null}
+                </ul>
+                <p className="mt-2.5 rounded-[10px] bg-surface p-2.5 text-[11px] leading-5 text-subtle">
+                  ملاحظة صادقة: لا يستطيع المتصفح رصد كل وسائل الغش (مثل التصوير بهاتف خارجي أو أجهزة تسجيل). نسجّل فقط الأحداث القابلة للكشف، وأي محاولة تظهر للمدرس فوراً في لوحة المراقبة.
+                </p>
+              </div>
+
+              <div className="grid gap-2">
+                {pledgeList.map(([key, text]) => (
+                  <label key={key} className="flex cursor-pointer items-start gap-2.5 rounded-[12px] border border-line bg-surface-soft p-3 transition hover:border-primary/40">
+                    <input
+                      type="checkbox"
+                      checked={pledges[key]}
+                      onChange={(event) => setPledges((current) => ({ ...current, [key]: event.target.checked }))}
+                      className="mt-0.5 size-4 accent-[color:var(--color-primary)]"
+                    />
+                    <span className="text-[12.5px] leading-6 text-ink">{text}</span>
+                  </label>
+                ))}
+                {cameraRequired ? (
+                  <label className="flex cursor-pointer items-start gap-2.5 rounded-[12px] border border-primary/25 bg-primary-soft/50 p-3 transition hover:border-primary/50">
+                    <input
+                      type="checkbox"
+                      checked={cameraAgreed}
+                      onChange={(event) => setCameraAgreed(event.target.checked)}
+                      className="mt-0.5 size-4 accent-[color:var(--color-primary)]"
+                    />
+                    <span className="text-[12.5px] leading-6 text-ink">أوافق على تشغيل الكاميرا وأخذ لقطات دورية أثناء الامتحان، وأفهم أن رفضها يُسجَّل ويظهر للمدرس.</span>
+                  </label>
+                ) : null}
+              </div>
+
+              {error ? <Alert tone="danger" onClose={() => setError('')}>{error}</Alert> : null}
+
+              <div className="flex flex-col items-stretch justify-between gap-2.5 sm:flex-row sm:items-center">
+                <Button variant="ghost" size="sm" icon={DoorOpen} onClick={onExit}>الخروج</Button>
+                <Button size="sm" icon={CheckCircle2} disabled={!canStart || starting} loading={starting} onClick={startWithConsent}>
+                  {cameraRequired && !cameraAgreed ? 'وافق على الكاميرا للبدء' : 'بدء الامتحان'}
+                </Button>
+              </div>
+            </div>
+          </div>
         </Card>
       </div>
     );

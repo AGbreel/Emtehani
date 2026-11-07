@@ -12,6 +12,7 @@ const StudentDashboard = lazy(() => import('./pages/StudentDashboard'));
 const ExamsPage = lazy(() => import('./pages/ExamsPage'));
 const ExamForm = lazy(() => import('./pages/ExamForm'));
 const TeacherExamDetail = lazy(() => import('./pages/TeacherExamDetail'));
+const TeacherProctoringPage = lazy(() => import('./pages/TeacherProctoringPage'));
 const ResultsPage = lazy(() => import('./pages/ResultsPage'));
 const EssaysPage = lazy(() => import('./pages/EssaysPage'));
 const TeacherRequestsPage = lazy(() => import('./pages/TeacherRequestsPage'));
@@ -50,6 +51,7 @@ const teacherTitles = {
   exams: 'الامتحانات',
   create: 'إنشاء امتحان',
   'exam-detail': 'إدارة الجلسة',
+  'exam-proctoring': 'مراقبة الطلاب أثناء الامتحان',
   results: 'النتائج والتحليلات',
   essays: 'مراجعة المقالات',
   requests: 'طلبات الطلاب',
@@ -104,6 +106,7 @@ const assistantTitles = {
 
 const activePages = {
   'exam-detail': 'exams',
+  'exam-proctoring': 'exams',
   review: 'results',
   'essay-review': 'essays',
 };
@@ -439,6 +442,11 @@ export default function App() {
     setPage('exam-detail');
   }
 
+  function openProctoring(exam) {
+    setSelectedExam(exam);
+    setPage('exam-proctoring');
+  }
+
   function openResults(exam) {
     if (exam) setSelectedExam(exam);
     setPage('results');
@@ -618,7 +626,9 @@ export default function App() {
   } else if (page === 'create') {
     content = <ExamForm token={token} onBack={() => setPage('exams')} onCreated={(exam) => { openExam(exam); }} />;
   } else if (page === 'exam-detail' && selectedExam) {
-    content = <TeacherExamDetail token={token} exam={selectedExam} onBack={() => setPage('exams')} onOpenResults={openResults} />;
+    content = <TeacherExamDetail token={token} exam={selectedExam} onBack={() => setPage('exams')} onOpenResults={openResults} onOpenProctoring={openProctoring} />;
+  } else if (page === 'exam-proctoring' && selectedExam) {
+    content = <TeacherProctoringPage token={token} exam={selectedExam} onBack={() => setPage('exam-detail')} />;
   } else if (page === 'results') {
     content = <ResultsPage token={token} user={user} selectedExam={selectedExam} onOpenReview={(id) => openReview(id, 'results')} onOpenExam={openExam} />;
   } else if (page === 'essays') {

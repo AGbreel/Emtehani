@@ -3,6 +3,8 @@ import { AnimatePresence, motion } from 'motion/react';
 import {
   AlertTriangle,
   BookOpen,
+  Camera,
+  CameraOff,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -18,11 +20,13 @@ import {
   ListChecks,
   LoaderCircle,
   LockKeyhole,
+  Maximize2,
   Pause,
   Radio,
   Save,
   Send,
   ShieldAlert,
+  ShieldCheck,
   TimerReset,
   Wifi,
   X,
@@ -44,6 +48,7 @@ import ExamWatermark from '../components/ExamWatermark';
 import ObfuscatedText from '../components/ObfuscatedText';
 import { request } from '../lib/api';
 import { useExamLockdown } from '../lib/useExamLockdown';
+import { useProctoring } from '../lib/useProctoring';
 import { formatNumber, formatTimer } from '../lib/format';
 import { remainingSecondsFromDeadline, serverClockOffset } from '../lib/timer';
 
@@ -258,13 +263,38 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
     onViolation: () => setFocusWarning(true),
   });
 
+  const proctoring = useProctoring({
+    token,
+    submissionId,
+    examId: paper.examId,
+    cameraConsent: Boolean(paper.proctoringConsent),
+    onResumed: () => {
+      // The pause time is added back server-side; pull the fresh deadline instead
+      // of guessing locally so the countdown stays server-authoritative.
+      request(`/api/exams/${paper.examId}/session`, { token })
+        .then((result) => {
+          if (result.deadlineUtc) setDeadlineUtc(result.deadlineUtc);
+          if (result.questionDeadlineUtc !== undefined) setQuestionDeadlineUtc(result.questionDeadlineUtc || null);
+          if (result.serverUtc) setClockOffset(serverClockOffset(result.serverUtc));
+        })
+        .catch(() => { /* next poll will reconcile */ });
+    },
+    onEndedByTeacher: () => {
+      if (submittedRef.current) return;
+      submittedRef.current = true;
+      onSubmitted({ id: submissionId, alreadySubmitted: true });
+    },
+  });
+
   const questions = paper.questions || [];
   const remaining = useMemo(() => {
     if (!deadlineUtc) return remainingFallback;
     return remainingSecondsFromDeadline(deadlineUtc, clockOffset) ?? remainingFallback;
     // clockTick intentionally drives a re-read of the clock every second.
   }, [deadlineUtc, clockOffset, clockTick, remainingFallback]);
-  const paused = examStatus === 'Paused';
+  // A teacher-review pause freezes the countdown and autosaves exactly like an
+  // exam-level pause; the server rejects saves while paused, so nothing is lost.
+  const paused = examStatus === 'Paused' || proctoring.pausedForReview;
   const displayedRemaining = paused ? (frozenRemainingRef.current ?? remaining) : remaining;
   const questionRemaining = useMemo(() => {
     if (!questionDeadlineUtc) return null;
@@ -575,6 +605,9 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="emerald" dot>جلسة نشطة</Badge>
               <span className="hidden items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-[9.5px] font-bold text-warning sm:inline-flex"><ShieldAlert size={10} />وضع الحماية</span>
+              {proctoring.enabled ? <span className="hidden items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-[9.5px] font-bold text-primary sm:inline-flex"><ShieldCheck size={10} />مراقَب</span> : null}
+              {proctoring.cameraActive ? <span className="hidden items-center gap-1 rounded-full bg-emerald-soft px-2 py-0.5 text-[9.5px] font-bold text-emerald sm:inline-flex"><Camera size={10} />الكاميرا تعمل</span> : null}
+              {proctoring.cameraFailed ? <span className="hidden items-center gap-1 rounded-full bg-danger-soft px-2 py-0.5 text-[9.5px] font-bold text-danger sm:inline-flex"><CameraOff size={10} />تعذر تشغيل الكاميرا</span> : null}
               <span className="hidden text-[10.5px] text-subtle md:inline">لا تغلق الصفحة</span>
             </div>
             <h1 className="mt-0.5 truncate font-display text-[14px] font-semibold text-ink sm:text-[15px]">{paper.examTitle}</h1>
@@ -610,6 +643,20 @@ export default function ExamRoomPage({ token, user, paper, onSubmitted }) {
       <div className="mx-auto max-w-[1280px] px-3 pt-4 sm:px-5">
         {focusWarning ? (
           <Alert tone="warning" className="mb-4" onClose={() => setFocusWarning(false)}>تم رصد خروجك من صفحة الامتحان أو محاولة نسخ. النسخ واللصق والطباعة وتصوير الشاشة محظورة، وكل محاولة تُسجَّل باسمك في تقرير المحاولة.</Alert>
+        ) : null}
+        {proctoring.warning ? (
+          <Alert tone="warning" className="mb-4">{proctoring.warning.message}</Alert>
+        ) : null}
+        {proctoring.pausedForReview ? (
+          <Alert tone="danger" className="mb-4">محاولتك متوقفة الآن بانتظار مراجعة المدرس. إجاباتك محفوظة والمؤقت متوقف، وستُستأنف المحاولة فور قرار المدرس.</Alert>
+        ) : null}
+        {proctoring.enabled && proctoring.settings?.requireFullscreen && !proctoring.isFullscreen ? (
+          <Alert tone="info" className="mb-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span>هذا الامتحان يتطلب وضع ملء الشاشة. بقاؤك خارج ملء الشاشة يُسجَّل كمخالفة.</span>
+              <Button size="xs" icon={Maximize2} onClick={proctoring.enterFullscreen}>الدخول إلى ملء الشاشة</Button>
+            </div>
+          </Alert>
         ) : null}
         {error ? <Alert tone="danger" className="mb-4" onClose={() => setError('')}>{error}</Alert> : null}
         {notice ? <Alert tone="info" className="mb-4" onClose={() => setNotice('')}>{notice}</Alert> : null}

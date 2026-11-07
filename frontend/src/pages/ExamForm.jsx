@@ -229,6 +229,25 @@ export default function ExamForm({ token, onBack, onCreated }) {
   const [shuffleOptions, setShuffleOptions] = useState(true);
   const [allowReviewPrevious, setAllowReviewPrevious] = useState(true);
   const [questionTimeLimitSeconds, setQuestionTimeLimitSeconds] = useState(0);
+  const [proctoringEnabled, setProctoringEnabled] = useState(false);
+  const [proctoring, setProctoring] = useState({
+    monitorTabSwitch: true,
+    monitorPageExit: true,
+    requireFullscreen: false,
+    monitorCopy: true,
+    preventCopy: true,
+    monitorPaste: false,
+    preventPaste: false,
+    monitorCut: true,
+    enableCamera: false,
+    snapshotIntervalSeconds: 60,
+    maxAllowedExits: 3,
+    exitAction: 'Warn',
+    fullscreenExitAction: 'Warn',
+    pauseTimerOnTeacherReview: true,
+    warnOnFirstExit: true,
+    warnOnRepeatedExit: true,
+  });
   const [scheduledAt, setScheduledAt] = useState('');
   const [availableFrom, setAvailableFrom] = useState('');
   const [availableUntil, setAvailableUntil] = useState('');
@@ -302,6 +321,10 @@ export default function ExamForm({ token, onBack, onCreated }) {
     return '';
   }
 
+  function patchProctoring(values) {
+    setProctoring((current) => ({ ...current, ...values }));
+  }
+
   async function submit(event) {
     event.preventDefault();
     const validation = validate();
@@ -335,7 +358,22 @@ export default function ExamForm({ token, onBack, onCreated }) {
           questions: questions.map(payloadFor),
         }),
       });
-      setCreated(result);
+      let proctoringWarning = '';
+      try {
+        await request(`/api/exams/${result.id}/proctoring-settings`, {
+          token,
+          method: 'PUT',
+          body: JSON.stringify({
+            isEnabled: proctoringEnabled,
+            ...proctoring,
+            snapshotIntervalSeconds: Number(proctoring.snapshotIntervalSeconds) || 60,
+            maxAllowedExits: Number(proctoring.maxAllowedExits) || 0,
+          }),
+        });
+      } catch (err) {
+        proctoringWarning = err.message;
+      }
+      setCreated({ ...result, proctoringWarning });
     } catch (err) {
       setError(err.message);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -418,6 +456,74 @@ export default function ExamForm({ token, onBack, onCreated }) {
                   <Input id="exam-question-time" type="number" min="0" max="3600" value={questionTimeLimitSeconds} onChange={(event) => setQuestionTimeLimitSeconds(event.target.value)} />
                 </Field>
               </div>
+              <div className="rounded-[12px] border border-line bg-surface-soft/60 p-3">
+                <Checkbox label="تفعيل المراقبة ومنع الغش أثناء الامتحان" checked={proctoringEnabled} onChange={(event) => setProctoringEnabled(event.target.checked)} />
+                {proctoringEnabled ? (
+                  <div className="mt-3 grid gap-3">
+                    <div className="grid gap-2">
+                      <p className="text-[12px] font-bold text-ink">مراقبة مغادرة الصفحة</p>
+                      <Checkbox label="رصد تبديل التبويبات والنوافذ" checked={proctoring.monitorTabSwitch} onChange={(event) => patchProctoring({ monitorTabSwitch: event.target.checked })} />
+                      <Checkbox label="رصد محاولات مغادرة الصفحة" checked={proctoring.monitorPageExit} onChange={(event) => patchProctoring({ monitorPageExit: event.target.checked })} />
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field label="الحد الأقصى للخروج من الصفحة" id="proctor-max-exits">
+                          <Input id="proctor-max-exits" type="number" min="0" max="50" value={proctoring.maxAllowedExits} onChange={(event) => patchProctoring({ maxAllowedExits: event.target.value })} />
+                        </Field>
+                        <Field label="ماذا يحدث عند تجاوز الحد؟" id="proctor-exit-action">
+                          <Select id="proctor-exit-action" value={proctoring.exitAction} onChange={(event) => patchProctoring({ exitAction: event.target.value })}>
+                            <option value="Allow">تسجيل فقط دون إجراء</option>
+                            <option value="Warn">تنبيه الطالب</option>
+                            <option value="RequireApproval">إيقاف المحاولة وانتظار موافقتك</option>
+                            <option value="AutoSubmit">التسليم التلقائي للمحاولة</option>
+                          </Select>
+                        </Field>
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                        <Checkbox label="تنبيه عند أول خروج" checked={proctoring.warnOnFirstExit} onChange={(event) => patchProctoring({ warnOnFirstExit: event.target.checked })} />
+                        <Checkbox label="تنبيه عند تكرار الخروج" checked={proctoring.warnOnRepeatedExit} onChange={(event) => patchProctoring({ warnOnRepeatedExit: event.target.checked })} />
+                      </div>
+                    </div>
+                    <div className="grid gap-2 border-t border-line pt-3">
+                      <p className="text-[12px] font-bold text-ink">ملء الشاشة</p>
+                      <Checkbox label="اشتراط وضع ملء الشاشة أثناء الامتحان" checked={proctoring.requireFullscreen} onChange={(event) => patchProctoring({ requireFullscreen: event.target.checked })} />
+                      {proctoring.requireFullscreen ? (
+                        <Field label="إجراء الخروج من ملء الشاشة" id="proctor-fs-action">
+                          <Select id="proctor-fs-action" value={proctoring.fullscreenExitAction} onChange={(event) => patchProctoring({ fullscreenExitAction: event.target.value })}>
+                            <option value="Allow">تسجيل فقط دون إجراء</option>
+                            <option value="Warn">تنبيه الطالب</option>
+                            <option value="RequireApproval">إيقاف المحاولة وانتظار موافقتك</option>
+                            <option value="AutoSubmit">التسليم التلقائي للمحاولة</option>
+                          </Select>
+                        </Field>
+                      ) : null}
+                    </div>
+                    <div className="grid gap-2 border-t border-line pt-3">
+                      <p className="text-[12px] font-bold text-ink">النسخ واللصق</p>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                        <Checkbox label="مراقبة النسخ" checked={proctoring.monitorCopy} onChange={(event) => patchProctoring({ monitorCopy: event.target.checked })} />
+                        <Checkbox label="منع النسخ" checked={proctoring.preventCopy} onChange={(event) => patchProctoring({ preventCopy: event.target.checked })} />
+                        <Checkbox label="مراقبة اللصق" checked={proctoring.monitorPaste} onChange={(event) => patchProctoring({ monitorPaste: event.target.checked })} />
+                        <Checkbox label="منع اللصق" checked={proctoring.preventPaste} onChange={(event) => patchProctoring({ preventPaste: event.target.checked })} />
+                        <Checkbox label="مراقبة القص" checked={proctoring.monitorCut} onChange={(event) => patchProctoring({ monitorCut: event.target.checked })} />
+                      </div>
+                    </div>
+                    <div className="grid gap-2 border-t border-line pt-3">
+                      <p className="text-[12px] font-bold text-ink">الكاميرا (اختيارية — بموافقة الطالب الصريحة)</p>
+                      <Checkbox label="تفعيل لقطات الكاميرا الدورية بعد موافقة الطالب" checked={proctoring.enableCamera} onChange={(event) => patchProctoring({ enableCamera: event.target.checked })} />
+                      {proctoring.enableCamera ? (
+                        <Field label="الفاصل بين اللقطات (ثواني)" id="proctor-snapshot-interval">
+                          <Input id="proctor-snapshot-interval" type="number" min="10" max="600" value={proctoring.snapshotIntervalSeconds} onChange={(event) => patchProctoring({ snapshotIntervalSeconds: event.target.value })} />
+                        </Field>
+                      ) : null}
+                    </div>
+                    <div className="border-t border-line pt-3">
+                      <Checkbox label="إيقاف المؤقت أثناء انتظار قرارك بالمراجعة" checked={proctoring.pauseTimerOnTeacherReview} onChange={(event) => patchProctoring({ pauseTimerOnTeacherReview: event.target.checked })} />
+                    </div>
+                    <p className="rounded-[10px] bg-surface p-2.5 text-[11px] leading-5 text-subtle">
+                      ملاحظة صادقة: المتصفح لا يستطيع رصد كل وسائل الغش (تصوير الشاشة بجهاز خارجي أو برامج تسجيل). تُسجَّل فقط الأحداث القابلة للكشف وتظهر لك مباشرة في لوحة المراقبة أثناء الامتحان.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </Card>
 
@@ -461,6 +567,7 @@ export default function ExamForm({ token, onBack, onCreated }) {
                 ['المدة', formatDuration(durationMinutes || 0)],
                 ['المحاولات', `${formatNumber(maxAttempts)} محاولة`],
                 ['مؤقت السؤال', Number(questionTimeLimitSeconds) > 0 ? `${formatNumber(questionTimeLimitSeconds)} ثانية` : 'بدون مؤقت'],
+                ['المراقبة ومنع الغش', proctoringEnabled ? 'مفعّلة' : 'معطّلة'],
                 ['إظهار النتائج', resultsReleaseMode === 'AfterSubmission' ? 'بعد تسليم الطالب' : 'بعد انتهاء الامتحان'],
               ].map(([label, value]) => (
                 <div key={label} className="flex items-start justify-between gap-2 border-b border-line pb-2 last:border-0 last:pb-0">
@@ -523,7 +630,12 @@ export default function ExamForm({ token, onBack, onCreated }) {
             <span className="text-[11.5px] font-bold text-muted">الطلاب</span>
             <span className="text-[11px] text-primary">المطابقون للمرحلة والصف</span>
           </div>
+          <div className="mt-3 flex items-center justify-between gap-2 border-t border-line pt-3">
+            <span className="text-[11.5px] font-bold text-muted">المراقبة ومنع الغش</span>
+            <span className="text-[11px] text-primary">{proctoringEnabled ? 'مفعّلة' : 'معطّلة'}</span>
+          </div>
         </div>
+        {created?.proctoringWarning ? <Alert tone="warning" className="mt-3">حُفظ الامتحان، لكن تعذر حفظ إعدادات المراقبة: {created.proctoringWarning}. افتح إدارة الامتحان ثم لوحة المراقبة لحفظها مرة أخرى.</Alert> : null}
       </Modal>
     </div>
   );
