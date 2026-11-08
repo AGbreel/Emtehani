@@ -44,6 +44,7 @@ const MyCoursesPage = lazy(() => import('./pages/MyCoursesPage'));
 const AssistantDashboard = lazy(() => import('./pages/AssistantDashboard'));
 const AdminPlansPage = lazy(() => import('./pages/AdminPlansPage'));
 const AdminReportsPage = lazy(() => import('./pages/AdminReportsPage'));
+const AdminDeveloperPortfolioPage = lazy(() => import('./pages/AdminDeveloperPortfolioPage'));
 import { authUserFromResponse, clearAuth, getStoredAuth, request, storeAuth, storeSession } from './lib/api';
 import { installWebMcpTools } from './lib/webmcp';
 
@@ -92,6 +93,7 @@ const adminTitles = {
   'admin-teachers': 'المدرسون والاشتراكات',
   plans: 'خطط الاشتراك',
   'admin-reports': 'التقارير والإحصاءات',
+  'admin-portfolio': 'بورتفوليو المطور',
   announcements: 'إعلانات المنصة',
   chat: 'المحادثات',
 };
@@ -115,7 +117,7 @@ const activePages = {
 const restorablePages = {
   Teacher: new Set(['dashboard', 'exams', 'results', 'essays', 'requests', 'students', 'courses', 'groups', 'finance', 'assistants', 'announcements', 'reports', 'teacher-profile', 'subscription', 'audit', 'chat']),
   Student: new Set(['dashboard', 'explore', 'learning', 'courses', 'available', 'results', 'teachers', 'profile', 'my-finance', 'announcements', 'chat']),
-  Admin: new Set(['dashboard', 'admin', 'admin-teachers', 'plans', 'admin-reports', 'announcements', 'chat']),
+  Admin: new Set(['dashboard', 'admin', 'admin-teachers', 'plans', 'admin-reports', 'admin-portfolio', 'announcements', 'chat']),
   Assistant: new Set(['dashboard', 'courses', 'groups', 'reports', 'announcements', 'chat']),
 };
 
@@ -139,6 +141,7 @@ const pageHashes = {
   admin: '/admin',
   'admin-teachers': '/admin-teachers',
   'admin-reports': '/admin-reports',
+  'admin-portfolio': '/admin-portfolio',
   'teacher-profile': '/teacher-profile',
   subscription: '/subscription',
   audit: '/audit',
@@ -406,7 +409,7 @@ export default function App() {
       setPage('subscription');
       return;
     }
-    if (['admin', 'admin-teachers', 'plans', 'admin-reports'].includes(next) && user?.role !== 'Admin') { setPage('dashboard'); return; }
+    if (['admin', 'admin-teachers', 'plans', 'admin-reports', 'admin-portfolio'].includes(next) && user?.role !== 'Admin') { setPage('dashboard'); return; }
     if (['finance', 'assistants', 'students', 'subscription', 'essays', 'requests', 'teacher-profile'].includes(next) && user?.role !== 'Teacher') { setPage('dashboard'); return; }
     if (['learning', 'explore', 'my-finance', 'available', 'profile'].includes(next) && user?.role !== 'Student') { setPage('dashboard'); return; }
     if (next === 'exam-detail' && !selectedExam) { setPage('exams'); return; }
@@ -585,6 +588,8 @@ export default function App() {
     content = <AdminPlansPage token={token} />;
   } else if (isAdmin && page === 'admin-reports') {
     content = <AdminReportsPage token={token} />;
+  } else if (isAdmin && page === 'admin-portfolio') {
+    content = <AdminDeveloperPortfolioPage token={token} />;
   } else if (page === 'announcements') {
     content = <AnnouncementsPage token={token} role={isAdmin ? 'Admin' : isStudent ? 'Student' : 'Teacher'} />;
   } else if (isAdmin) {

@@ -142,7 +142,20 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJw
         NameClaimType = ClaimTypes.Name,
         RoleClaimType = ClaimTypes.Role
     };
+    // Browser WebSocket clients cannot set an Authorization header; the SignalR
+    // connection carries the same JWT as ?access_token= on the hub URL.
+    o.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            var path = context.HttpContext.Request.Path;
+            if (path.StartsWithSegments("/hubs") && context.Request.Query.TryGetValue("access_token", out var token))
+                context.Token = token.SingleOrDefault();
+            return Task.CompletedTask;
+        }
+    };
 });
+builder.Services.AddSignalR();
 builder.Services.AddAuthorization(); builder.Services.AddEndpointsApiExplorer(); builder.Services.AddSwaggerGen();
 builder.Services.AddHealthChecks().AddDbContextCheck<AppDbContext>();
 builder.Services.AddMemoryCache();
@@ -400,6 +413,7 @@ app.Use(async (context, next) =>
     return;
 });
 app.MapHealthChecks("/health");
+app.MapHub<ProctoringHub>("/hubs/proctoring");
 app.MapGet("/api", () => Results.Ok(new { service = "Emtehani API", version = "1.0" }));
 // Public directory used only for choosing teachers during student registration. It never
 // exposes students, answer keys, or private data, and registration still validates IDs.
@@ -714,7 +728,10 @@ static DateTime? QuestionDeadlineFromLimit(int examLimit, Submission submission,
     if (question is null) return null;
     var limit = QuestionLimitSeconds(examLimit, question);
     if (limit <= 0 || submission.QuestionStartedAtUtc is null) return null;
-    return submission.QuestionStartedAtUtc.Value.AddSeconds(limit);
+    // Per-question countdowns freeze during teacher-review pauses like the exam timer.
+    return submission.QuestionStartedAtUtc.Value
+        .AddSeconds(limit)
+        .AddSeconds(ExamGrader.PauseShiftSeconds(submission, DateTime.UtcNow));
 }
 static int? QuestionRemainingSeconds(Exam exam, Submission submission, Question? question, DateTime now)
 {
@@ -732,10 +749,12 @@ static void AdvanceExpiredQuestion(Submission submission, IReadOnlyList<Question
     if (limit <= 0) { submission.QuestionStartedAtUtc = null; return; }
     if (submission.QuestionStartedAtUtc is null) submission.QuestionStartedAtUtc = now;
     var started = submission.QuestionStartedAtUtc.Value;
+    var frozenSeconds = ExamGrader.PauseShiftSeconds(submission, now);
+    var effectiveNow = now.AddSeconds(-frozenSeconds);
     while (index + 1 < ordered.Count)
     {
         limit = QuestionLimitSeconds(examLimit, ordered[index]);
-        if (limit <= 0 || now < started.AddSeconds(limit)) break;
+        if (limit <= 0 || effectiveNow < started.AddSeconds(limit)) break;
         started = started.AddSeconds(limit);
         index++;
     }
@@ -1040,12 +1059,16 @@ async Task<bool> SendVerificationEmail(AppUser user, string verifyToken, string 
             "الرابط صالح لمدة 24 ساعة وللاستخدام مرة واحدة. إذا لم تنشئ هذا الحساب، تجاهل هذه الرسالة ولن يتم تفعيل البريد.",
             ["حساب موثّق وآمن باسمك", "وصول فوري للامتحانات والكورسات", "إشعارات الحصص والنتائج والمدفوعات"],
             "أهلاً بك في امتحاني — فعّل بريدك الآن وابدأ أول خطوة في رحلتك التعليمية.");
-        using var mail = new MailMessage(fromAddress, user.Email, "أهلاً بك في امتحاني — أكّد بريدك لتبدأ", html) { IsBodyHtml = true };
+        // Body is the plain-text fallback; the branded HTML is added LAST because most
+        // mail clients pick the last part of a multipart/alternative message. Adding the
+        // HTML as an alternate after a text body keeps the branded card as the display.
+        using var mail = new MailMessage(fromAddress, user.Email, "أهلاً بك في امتحاني — أكّد بريدك لتبدأ",
+            $"أهلاً {user.FullName}،\r\n\r\nلتفعيل حسابك في منصة امتحاني افتح الرابط التالي:\r\n{verifyUrl}\r\n\r\nالرابط صالح لمدة 24 ساعة.")
+        { IsBodyHtml = false };
         mail.From = new MailAddress(fromAddress, "منصة امتحاني", Encoding.UTF8);
         mail.SubjectEncoding = Encoding.UTF8;
-        mail.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(
-            $"أهلاً {user.FullName}،\r\n\r\nلتفعيل حسابك في منصة امتحاني افتح الرابط التالي:\r\n{verifyUrl}\r\n\r\nالرابط صالح لمدة 24 ساعة.",
-            Encoding.UTF8, "text/plain"));
+        mail.BodyEncoding = Encoding.UTF8;
+        mail.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(html, Encoding.UTF8, "text/html"));
         using var client = new SmtpClient(smtpHost, int.TryParse(builder.Configuration["Email:SmtpPort"], out var port) ? port : 587) { EnableSsl = bool.TryParse(builder.Configuration["Email:EnableSsl"], out var ssl) && ssl };
         var username = builder.Configuration["Email:Username"]; var password = builder.Configuration["Email:Password"];
         if (!string.IsNullOrWhiteSpace(username)) client.Credentials = new NetworkCredential(username, password);
@@ -1069,12 +1092,13 @@ async Task<bool> SendPasswordResetEmail(AppUser user, string resetToken, string 
         var intro = $"أهلاً <strong style=\"color:#e8efe9\">{WebUtility.HtmlEncode(user.FullName)}</strong>، وصلنا طلب لإعادة تعيين كلمة المرور الخاصة بحسابك. اضغط على الزر أدناه لاختيار كلمة مرور جديدة.";
         var html = BrandedEmail("أمان الحساب", "إعادة تعيين كلمة المرور", intro, "تعيين كلمة مرور جديدة", resetUrl,
             "الرابط صالح لمدة ساعة واحدة. إذا لم تطلب إعادة التعيين، تجاهل هذه الرسالة وستبقى كلمة المرور الحالية كما هي.");
-        using var mail = new MailMessage(fromAddress, user.Email, "إعادة تعيين كلمة المرور – منصة امتحاني", html) { IsBodyHtml = true };
+        using var mail = new MailMessage(fromAddress, user.Email, "إعادة تعيين كلمة المرور – منصة امتحاني",
+            $"أهلاً {user.FullName}،\r\n\r\nلإعادة تعيين كلمة المرور افتح الرابط التالي:\r\n{resetUrl}\r\n\r\nالرابط صالح لمدة ساعة واحدة. إذا لم تطلب ذلك فتجاهل الرسالة.")
+        { IsBodyHtml = false };
         mail.From = new MailAddress(fromAddress, "امتحاني", Encoding.UTF8);
         mail.SubjectEncoding = Encoding.UTF8;
-        mail.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(
-            $"أهلاً {user.FullName}،\r\n\r\nلإعادة تعيين كلمة المرور افتح الرابط التالي:\r\n{resetUrl}\r\n\r\nالرابط صالح لمدة ساعة واحدة. إذا لم تطلب ذلك فتجاهل الرسالة.",
-            Encoding.UTF8, "text/plain"));
+        mail.BodyEncoding = Encoding.UTF8;
+        mail.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(html, Encoding.UTF8, "text/html"));
         using var client = new SmtpClient(smtpHost, int.TryParse(builder.Configuration["Email:SmtpPort"], out var smtpPort) ? smtpPort : 587) { EnableSsl = bool.TryParse(builder.Configuration["Email:EnableSsl"], out var ssl) && ssl };
         var username = builder.Configuration["Email:Username"]; var password = builder.Configuration["Email:Password"];
         if (!string.IsNullOrWhiteSpace(username)) client.Credentials = new NetworkCredential(username, password);
@@ -1093,13 +1117,15 @@ async Task FinalizeExpired(AppDbContext db)
     var now = DateTime.UtcNow;
     var candidates = await db.Submissions
         .AsNoTracking()
-        .Where(x => x.Status == "InProgress" && x.Exam != null && x.Exam.Status != "Paused")
-        .Select(x => new { x.Id, x.StartedAtUtc, x.ExtraTimeSeconds, x.Exam!.DurationMinutes, x.Exam.AvailableUntilUtc })
+        // An attempt paused for teacher review has no ticking deadline; the teacher
+        // must resolve it, so it is never swept by the expiry finalizer.
+        .Where(x => x.Status == "InProgress" && x.Exam != null && x.Exam.Status != "Paused" && x.ProctoringPauseStartedAtUtc == null)
+        .Select(x => new { x.Id, x.StartedAtUtc, x.ExtraTimeSeconds, x.ProctoringPausedSeconds, x.Exam!.DurationMinutes, x.Exam.AvailableUntilUtc })
         .ToListAsync();
     var expiredIds = candidates
         .Where(x =>
         {
-            var effective = ExamGrader.Deadline(new Submission { StartedAtUtc = x.StartedAtUtc, ExtraTimeSeconds = x.ExtraTimeSeconds }, x.DurationMinutes, x.AvailableUntilUtc);
+            var effective = ExamGrader.Deadline(new Submission { StartedAtUtc = x.StartedAtUtc, ExtraTimeSeconds = x.ExtraTimeSeconds, ProctoringPausedSeconds = x.ProctoringPausedSeconds }, x.DurationMinutes, x.AvailableUntilUtc);
             var cappedByWindow = x.AvailableUntilUtc.HasValue && effective == x.AvailableUntilUtc.Value;
             return now >= effective.AddMinutes(cappedByWindow ? 0 : FinalizeGraceMinutes);
         })
@@ -3842,7 +3868,15 @@ app.MapGet("/api/exams/{id:guid}/session", async (Guid id, ClaimsPrincipal p, Ap
         questionStartedAtUtc = submission?.QuestionStartedAtUtc,
         questionDeadlineUtc = submission is null ? null : QuestionDeadlineUtc(exam, submission, currentQuestion, now),
         questionRemainingSeconds = submission is null ? null : QuestionRemainingSeconds(exam, submission, currentQuestion, now),
-        questionCount = orderedQuestions.Count
+        questionCount = orderedQuestions.Count,
+        // Minimal proctoring disclosure so the student sees the consent screen
+        // before the attempt is created; full settings stay staff-only.
+        proctoring = new
+        {
+            enabled = db.ExamProctoringSettings.AsNoTracking().Any(x => x.ExamId == exam.Id && x.IsEnabled),
+            requireFullscreen = db.ExamProctoringSettings.AsNoTracking().Where(x => x.ExamId == exam.Id).Select(x => x.RequireFullscreen).FirstOrDefault(),
+            enableCamera = db.ExamProctoringSettings.AsNoTracking().Where(x => x.ExamId == exam.Id).Select(x => x.EnableCamera).FirstOrDefault()
+        }
     });
 }).RequireAuthorization();
 
@@ -3984,7 +4018,7 @@ app.MapPost("/api/exams/{id:guid}/start", async (Guid id, ClaimsPrincipal p, App
     }
     participant.Status = "Active"; participant.LastSeenAtUtc = now; await db.SaveChangesAsync();
     var resumedQuestion = orderedQuestions.Count == 0 ? null : orderedQuestions[Math.Clamp(existing.CurrentQuestionIndex, 0, orderedQuestions.Count - 1)];
-    return Results.Ok(new { existing.Id, existing.StartedAtUtc, e.DurationMinutes, existing.ExtraTimeSeconds, remainingSeconds = RemainingSeconds(existing, e, now), deadlineUtc = EffectiveDeadline(existing, e, now), serverUtc = now, examStatus = e.Status, currentQuestionIndex = existing.CurrentQuestionIndex, timedMode, questionDeadlineUtc = QuestionDeadlineUtc(e, existing, resumedQuestion, now), questionRemainingSeconds = QuestionRemainingSeconds(e, existing, resumedQuestion, now) });
+    return Results.Ok(new { existing.Id, existing.StartedAtUtc, e.DurationMinutes, existing.ExtraTimeSeconds, remainingSeconds = RemainingSeconds(existing, e, now), deadlineUtc = EffectiveDeadline(existing, e, now), serverUtc = now, examStatus = e.Status, currentQuestionIndex = existing.CurrentQuestionIndex, timedMode, questionDeadlineUtc = QuestionDeadlineUtc(e, existing, resumedQuestion, now), questionRemainingSeconds = QuestionRemainingSeconds(e, existing, resumedQuestion, now), proctoringStatus = existing.ProctoringStatus });
   }
   var attemptsUsed = await db.Submissions.CountAsync(s => s.ExamId == id && s.StudentId == uid && s.Status != "InProgress" && s.Status != "Abandoned" && !s.IsExceptionAttempt);
   var attemptNumber = await db.Submissions.CountAsync(s => s.ExamId == id && s.StudentId == uid) + 1;
@@ -4015,11 +4049,11 @@ app.MapPost("/api/exams/{id:guid}/start", async (Guid id, ClaimsPrincipal p, App
     var raced = await db.Submissions.FirstOrDefaultAsync(s => s.ExamId == id && s.StudentId == uid && s.Status == "InProgress");
     return raced is null
       ? Results.Conflict(new { message = "تعذر بدء المحاولة بسبب محاولة أخرى قيد التنفيذ. أعد المحاولة بعد لحظة." })
-      : Results.Ok(new { raced.Id, raced.StartedAtUtc, e.DurationMinutes, raced.ExtraTimeSeconds, remainingSeconds = RemainingSeconds(raced, e, now), deadlineUtc = EffectiveDeadline(raced, e, now), serverUtc = now, examStatus = e.Status, currentQuestionIndex = raced.CurrentQuestionIndex, timedMode });
+      : Results.Ok(new { raced.Id, raced.StartedAtUtc, e.DurationMinutes, raced.ExtraTimeSeconds, remainingSeconds = RemainingSeconds(raced, e, now), deadlineUtc = EffectiveDeadline(raced, e, now), serverUtc = now, examStatus = e.Status, currentQuestionIndex = raced.CurrentQuestionIndex, timedMode, proctoringStatus = raced.ProctoringStatus });
   }
   await Audit(db, uid, "submission.started", "Submission", sub.Id.ToString());
   var firstQuestion = orderedQuestions.Count == 0 ? null : orderedQuestions[Math.Clamp(sub.CurrentQuestionIndex, 0, orderedQuestions.Count - 1)];
-  return Results.Ok(new { sub.Id, sub.StartedAtUtc, e.DurationMinutes, sub.ExtraTimeSeconds, remainingSeconds = RemainingSeconds(sub, e, now), deadlineUtc = EffectiveDeadline(sub, e, now), serverUtc = now, examStatus = e.Status, currentQuestionIndex = sub.CurrentQuestionIndex, timedMode, questionDeadlineUtc = QuestionDeadlineUtc(e, sub, firstQuestion, now), questionRemainingSeconds = QuestionRemainingSeconds(e, sub, firstQuestion, now) });
+  return Results.Ok(new { sub.Id, sub.StartedAtUtc, e.DurationMinutes, sub.ExtraTimeSeconds, remainingSeconds = RemainingSeconds(sub, e, now), deadlineUtc = EffectiveDeadline(sub, e, now), serverUtc = now, examStatus = e.Status, currentQuestionIndex = sub.CurrentQuestionIndex, timedMode, questionDeadlineUtc = QuestionDeadlineUtc(e, sub, firstQuestion, now), questionRemainingSeconds = QuestionRemainingSeconds(e, sub, firstQuestion, now), proctoringStatus = sub.ProctoringStatus });
 }).RequireAuthorization().RequireRateLimiting("api");
 app.MapPut("/api/submissions/{id:guid}/answers", async (Guid id, SubmitRequest req, ClaimsPrincipal p, AppDbContext db) =>
 {
@@ -4030,6 +4064,7 @@ app.MapPut("/api/submissions/{id:guid}/answers", async (Guid id, SubmitRequest r
   var sub = await db.Submissions.Include(s => s.Answers).FirstOrDefaultAsync(s => s.Id == id && s.StudentId == uid);
   if (sub is null) return Results.NotFound();
   if (sub.Status != "InProgress") return Results.Conflict(new { message = "تم تسليم هذه المحاولة بالفعل؛ لم يعد حفظ الإجابات متاحاً." });
+  if (sub.ProctoringStatus == "PausedForTeacherReview") return Results.Conflict(new { message = "محاولتك متوقفة بانتظار مراجعة المدرس. إجاباتك محفوظة ولن تفقد شيئاً؛ انتظر قرار المدرس." });
   var examInfo = await db.Exams.Where(e => e.Id == sub.ExamId).Select(e => new { e.Id, e.DurationMinutes, e.Status, e.AvailableUntilUtc, e.AllowReviewPrevious, e.ShuffleQuestions, e.QuestionTimeLimitSeconds }).FirstOrDefaultAsync();
   if (examInfo is null) return Results.NotFound();
   var restriction = await ExamAccessRestriction(db, sub.ExamId, uid);
@@ -4455,6 +4490,32 @@ app.MapGet("/api/teacher/subscription", async (ClaimsPrincipal p, AppDbContext d
     if (p.FindFirstValue(ClaimTypes.Role) != "Teacher") return Results.Forbid();
     if (!Guid.TryParse(UserId(p), out var teacherId)) return Results.Unauthorized();
     var subscription = await CurrentSubscription(db, teacherId);
+    var nowUtc = DateTime.UtcNow;
+    // Expiry reminder: one notification per subscription per day once seven days or
+    // less remain (and a final one on expiry). The teacher dashboard polls this endpoint,
+    // so the reminder also works without a background scheduler.
+    if (subscription is { Status: "Confirmed", EndsAtUtc: not null })
+    {
+        var left = subscription.EndsAtUtc.Value - nowUtc;
+        if (left <= TimeSpan.FromDays(7))
+        {
+            var expired = left <= TimeSpan.Zero;
+            var reminderTitle = expired ? "انتهت باقتك" : "باقتك قاربت على الانتهاء";
+            var alreadySent = await db.Notifications.AsNoTracking().AnyAsync(x =>
+                x.UserId == teacherId && x.Type == "Subscription" && x.Title == reminderTitle &&
+                x.CreatedAtUtc >= nowUtc.AddHours(-20));
+            if (!alreadySent)
+            {
+                var planName = subscription.Plan?.Name ?? "اشتراكك";
+                var days = Math.Max(0, (int)Math.Ceiling(left.TotalDays));
+                var body = expired
+                    ? $"{planName} انتهت الآن. جدّد الاشتراك من صفحة الباقة للحفاظ على ميزات حسابك."
+                    : $"متبقي {days} يوم على انتهاء {planName}. جدّد الآن لتجنب توقف الميزات.";
+                AddNotifications(db, [teacherId], "Subscription", reminderTitle, body, "subscription");
+                await db.SaveChangesAsync();
+            }
+        }
+    }
     var plans = await db.SubscriptionPlans.AsNoTracking()
         .Where(x => x.IsActive)
         .OrderBy(x => x.SortOrder)
@@ -4481,7 +4542,13 @@ app.MapGet("/api/teacher/subscription", async (ClaimsPrincipal p, AppDbContext d
             subscription.CreatedAtUtc,
             price = subscription.Plan?.Price ?? 0,
             currency = subscription.Plan?.Currency ?? "EGP",
-            billingPeriodDays = subscription.Plan?.BillingPeriodDays ?? 30
+            billingPeriodDays = subscription.Plan?.BillingPeriodDays ?? 30,
+            daysLeft = subscription.EndsAtUtc is null ? (int?)null
+                : (int)Math.Ceiling((subscription.EndsAtUtc.Value - nowUtc).TotalDays),
+            isExpiringSoon = subscription.EndsAtUtc is not null
+                && subscription.EndsAtUtc.Value > nowUtc
+                && subscription.EndsAtUtc.Value - nowUtc <= TimeSpan.FromDays(7),
+            isExpired = subscription.EndsAtUtc is not null && subscription.EndsAtUtc.Value <= nowUtc
         },
         plans = plans.Select(x => new
         {
@@ -4492,7 +4559,7 @@ app.MapGet("/api/teacher/subscription", async (ClaimsPrincipal p, AppDbContext d
             features = SafeJsonArray(x.FeaturesJson)
         }).ToList(),
         requiresSelection = subscription is null || subscription.Status != "Confirmed",
-        serverUtc = DateTime.UtcNow
+        serverUtc = nowUtc
     });
 }).RequireAuthorization();
 
@@ -4598,6 +4665,7 @@ app.MapPost("/api/teacher/subscription", async (SubscriptionSelectRequest req, C
             PlanId = plan.Id,
             Status = "Confirmed",
             StartedAtUtc = now,
+            EndsAtUtc = now.AddDays(Math.Clamp(plan.BillingPeriodDays, 1, 3650)),
             ConfirmedAtUtc = now,
             CreatedAtUtc = now,
             UpdatedAtUtc = now
@@ -4609,7 +4677,7 @@ app.MapPost("/api/teacher/subscription", async (SubscriptionSelectRequest req, C
         subscription.PlanId = plan.Id;
         subscription.Status = "Confirmed";
         subscription.StartedAtUtc ??= now;
-        subscription.EndsAtUtc = null;
+        subscription.EndsAtUtc = now.AddDays(Math.Clamp(plan.BillingPeriodDays, 1, 3650));
         subscription.ConfirmedAtUtc = now;
         subscription.UpdatedAtUtc = now;
     }
@@ -5603,6 +5671,9 @@ app.MapTeachingExploreEndpoints();
 app.MapTeachingCommunicationEndpoints();
 app.MapChatGovernanceEndpoints();
 app.MapAdminReportEndpoints();
+app.MapProctoringEndpoints();
+app.MapPaymentSettingsEndpoints();
+app.MapDeveloperPortfolioEndpoints();
 
 app.Run();
 

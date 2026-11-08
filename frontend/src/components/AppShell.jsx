@@ -29,6 +29,7 @@ import {
   Users,
   Wallet,
   X,
+  Code2,
 } from 'lucide-react';
 import { Avatar, cn, IconButton, Logo, StatusChip } from './ui';
 import AnimatedBackground from './AnimatedBackground';
@@ -74,6 +75,7 @@ const adminNav = [
   { key: 'admin-teachers', label: 'المدرسون والاشتراكات', shortLabel: 'المدرسون', icon: Users },
   { key: 'plans', label: 'خطط الاشتراك', shortLabel: 'الخطط', icon: CreditCard },
   { key: 'admin-reports', label: 'التقارير والإحصاءات', shortLabel: 'التقارير', icon: BarChart3 },
+  { key: 'admin-portfolio', label: 'بورتفوليو المطور', shortLabel: 'البورتفوليو', icon: Code2 },
   { key: 'announcements', label: 'إعلانات المنصة', shortLabel: 'الإعلانات', icon: Megaphone },
 ];
 
@@ -107,6 +109,7 @@ const pageMeta = {
   'my-finance': { title: 'مدفوعاتي', eyebrow: 'الحساب المالي' },
   plans: { title: 'خطط الاشتراك', eyebrow: 'اشتراكات المدرسين' },
   'admin-reports': { title: 'التقارير والإحصاءات', eyebrow: 'إشراف المنصة' },
+  'admin-portfolio': { title: 'بورتفوليو المطور', eyebrow: 'إدارة المحتوى' },
   'teacher-profile': { title: 'صفحتي التعريفية', eyebrow: 'ملفي العام' },
   teachers: { title: 'المدرسون', eyebrow: 'اختيار المدرس' },
   profile: { title: 'ملفي الأكاديمي', eyebrow: 'بياناتي وسجلي' },
