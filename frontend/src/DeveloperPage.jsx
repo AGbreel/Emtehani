@@ -484,14 +484,16 @@ export default function DeveloperPage({ onBack, theme = "dark", onThemeChange })
             <div className="pf-stack-track">
               {marqueeStack.map((item, index) => (
                 <span className="pf-stack-item" key={`${item.slug || item.name}-${index}`}>
-                  <img
-                    src={`https://cdn.simpleicons.org/${encodeURIComponent(item.slug || item.name)}/${isDark ? "9fb0ff" : "1e3bff"}`}
-                    alt=""
-                    width="22"
-                    height="22"
-                    loading="lazy"
-                    onError={(event) => { event.currentTarget.style.display = "none"; }}
-                  />
+                  {item.slug ? (
+                    <img
+                      src={`https://cdn.simpleicons.org/${encodeURIComponent(item.slug || item.name)}/${isDark ? "9fb0ff" : "1e3bff"}`}
+                      alt=""
+                      width="22"
+                      height="22"
+                      loading="lazy"
+                      onError={(event) => { event.currentTarget.style.display = "none"; }}
+                    />
+                  ) : null}
                   <span>{item.name}</span>
                 </span>
               ))}

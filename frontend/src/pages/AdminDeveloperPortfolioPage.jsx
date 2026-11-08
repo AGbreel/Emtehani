@@ -542,14 +542,18 @@ export default function AdminDeveloperPortfolioPage({ token }) {
           <div className="grid gap-2">
             {stack.map((item, index) => (
               <div key={index} className="flex flex-wrap items-center gap-2 rounded-[12px] border border-line bg-surface-soft/50 p-2.5">
-                <img
-                  src={`https://cdn.simpleicons.org/${encodeURIComponent(item.slug || item.name || 'code')}/64748b`}
-                  alt=""
-                  width="20"
-                  height="20"
-                  className="size-5 shrink-0 object-contain"
-                  onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }}
-                />
+                {item.slug ? (
+                  <img
+                    src={`https://cdn.simpleicons.org/${encodeURIComponent(item.slug)}/64748b`}
+                    alt=""
+                    width="20"
+                    height="20"
+                    className="size-5 shrink-0 object-contain"
+                    onError={(event) => { event.currentTarget.style.visibility = 'hidden'; }}
+                  />
+                ) : (
+                  <span className="grid size-5 shrink-0 place-items-center rounded bg-primary-soft text-[8px] font-bold text-primary">{(item.name || '?').slice(0, 2)}</span>
+                )}
                 <Input value={item.name || ''} onChange={(event) => update((next) => { next.stack[index].name = event.target.value; })} placeholder="اسم التقنية" className="h-9 max-w-[220px] flex-1 text-[12px]" />
                 <Input value={item.slug || ''} onChange={(event) => update((next) => { next.stack[index].slug = event.target.value; })} placeholder="simpleicons slug" dir="ltr" className="h-9 max-w-[200px] flex-1 text-left text-[12px]" />
                 <div className="ms-auto">

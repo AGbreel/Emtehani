@@ -78,7 +78,7 @@ export const DEFAULT_PORTFOLIO = {
     { name: "TypeScript", slug: "typescript" },
     { name: "ASP.NET Core", slug: "dotnet" },
     { name: "Vite", slug: "vite" },
-    { name: "SQL Server", slug: "microsoftsqlserver" },
+    { name: "SQL Server", slug: "" },
     { name: "Git", slug: "git" },
     { name: "Docker", slug: "docker" },
   ],
