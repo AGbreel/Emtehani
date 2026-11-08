@@ -96,6 +96,7 @@ export default function MediaUploader({
   allowLink = true,
   maxMb = 200,
   className = '',
+  onStateChange,
 }) {
   const config = KINDS[kind] || KINDS.Video;
   const Icon = config.icon;
@@ -121,19 +122,24 @@ export default function MediaUploader({
     }
     setBusy(true);
     setProgress(0);
+    onStateChange?.({ busy: true, progress: 0 });
     try {
       const form = new FormData();
       form.append('file', file);
       form.append('kind', kind);
+      const report = (percent) => {
+        setProgress(percent);
+        onStateChange?.({ busy: true, progress: percent });
+      };
       let authToken = getStoredAuth().token || token;
       let result;
       try {
-        result = await postMedia(form, authToken, setProgress);
+        result = await postMedia(form, authToken, report);
       } catch (err) {
         if (err.status !== 401) throw err;
         const next = await refreshAccessToken();
         if (!next) throw err;
-        result = await postMedia(form, next, setProgress);
+        result = await postMedia(form, next, report);
       }
       onChange?.(result?.url || '');
     } catch (err) {
@@ -141,6 +147,7 @@ export default function MediaUploader({
     } finally {
       setBusy(false);
       setProgress(0);
+      onStateChange?.({ busy: false, progress: 0 });
       if (inputRef.current) inputRef.current.value = '';
     }
   }
@@ -220,8 +227,19 @@ export default function MediaUploader({
         )}
 
         {busy ? (
-          <div className="absolute inset-x-0 bottom-0">
-            <motion.span className="block h-1 bg-primary" initial={{ width: 0 }} animate={{ width: `${progress}%` }} transition={{ ease: 'easeOut' }} />
+          <div className="absolute inset-x-0 bottom-0 h-1.5 overflow-hidden bg-surface-soft">
+            <motion.span
+              className="relative block h-full overflow-hidden bg-gradient-to-l from-primary via-emerald to-primary"
+              initial={{ width: 0 }}
+              animate={{ width: `${progress}%` }}
+              transition={{ ease: 'easeOut', duration: 0.35 }}
+            >
+              <motion.span
+                className="absolute inset-0 bg-[linear-gradient(110deg,transparent_25%,rgba(255,255,255,.55)_50%,transparent_75%)]"
+                animate={{ x: ['-100%', '100%'] }}
+                transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
+              />
+            </motion.span>
           </div>
         ) : null}
       </div>

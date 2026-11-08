@@ -1,11 +1,40 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { ImagePlus, Link2, LoaderCircle, RefreshCw, Trash2, UploadCloud } from 'lucide-react';
-import { request, assetUrl } from '../lib/api';
+import { API, assetUrl, getStoredAuth, refreshAccessToken } from '../lib/api';
 import { cn } from './ui';
 
 const ACCEPTED = ['image/png', 'image/jpeg', 'image/webp'];
 const MAX_MB = 4;
+
+function postImage(form, token, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API}/api/uploads/image`);
+    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.timeout = 60 * 1000;
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+    };
+    xhr.onload = () => {
+      let payload = {};
+      try { payload = JSON.parse(xhr.responseText || '{}'); } catch { payload = {}; }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(100);
+        resolve(payload);
+        return;
+      }
+      const error = new Error(payload.message || (xhr.status === 413
+        ? 'حجم الصورة أكبر من الحد المسموح على الخادم.'
+        : 'تعذر رفع الصورة. حاول مرة أخرى.'));
+      error.status = xhr.status;
+      reject(error);
+    };
+    xhr.onerror = () => reject(new Error('تعذر الاتصال بالخادم أثناء الرفع. تحقق من الإنترنت ثم حاول مرة أخرى.'));
+    xhr.ontimeout = () => reject(new Error('انتهت مهلة الرفع. جرّب صورة أصغر أو اتصالاً أسرع.'));
+    xhr.send(form);
+  });
+}
 
 export default function ImageUploader({
   token,
@@ -17,8 +46,10 @@ export default function ImageUploader({
   className = '',
   disabled = false,
   allowLink = true,
+  onStateChange,
 }) {
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const [dragging, setDragging] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
@@ -41,15 +72,32 @@ export default function ImageUploader({
       return;
     }
     setBusy(true);
+    setProgress(0);
+    onStateChange?.({ busy: true, progress: 0 });
     try {
       const form = new FormData();
       form.append('file', file);
-      const result = await request('/api/uploads/image', { token, method: 'POST', body: form, timeoutMs: 60000 });
+      const report = (percent) => {
+        setProgress(percent);
+        onStateChange?.({ busy: true, progress: percent });
+      };
+      let authToken = getStoredAuth().token || token;
+      let result;
+      try {
+        result = await postImage(form, authToken, report);
+      } catch (err) {
+        if (err.status !== 401) throw err;
+        const next = await refreshAccessToken();
+        if (!next) throw err;
+        result = await postImage(form, next, report);
+      }
       onChange?.(result?.url || '');
     } catch (err) {
       setError(err.message || 'تعذر رفع الصورة. حاول مرة أخرى.');
     } finally {
       setBusy(false);
+      setProgress(0);
+      onStateChange?.({ busy: false, progress: 0 });
       if (inputRef.current) inputRef.current.value = '';
     }
   }
@@ -118,11 +166,15 @@ export default function ImageUploader({
 
         <button type="button" onClick={() => inputRef.current?.click()} disabled={disabled || busy} className="inline-flex min-h-9 items-center gap-1.5 rounded-[10px] bg-primary px-3 text-[11.5px] font-bold text-white shadow-[0_12px_24px_-16px_var(--app-primary)] transition hover:bg-primary-strong disabled:opacity-60">
           {busy ? <LoaderCircle size={13} className="animate-spin" /> : <UploadCloud size={13} />}
-          {busy ? 'جارٍ الرفع...' : value ? 'رفع صورة جديدة' : 'ارفع صورة من جهازك'}
+          {busy ? `جارٍ الرفع ${progress}%` : value ? 'رفع صورة جديدة' : 'ارفع صورة من جهازك'}
         </button>
         <p className="text-[10px] leading-5 text-subtle">اسحب الصورة وأفلتها هنا · PNG أو JPG أو WebP · حتى {MAX_MB} ميجابايت</p>
 
-        {busy ? <motion.span className="absolute inset-x-0 bottom-0 h-0.5 bg-primary" initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: 1.4, repeat: Infinity }} style={{ originX: 0 }} /> : null}
+        {busy ? (
+          <span className="absolute inset-x-0 bottom-0 h-1 bg-surface-soft">
+            <motion.span className="block h-full bg-gradient-to-l from-primary to-emerald" initial={{ width: 0 }} animate={{ width: `${progress}%` }} transition={{ ease: 'easeOut' }} />
+          </span>
+        ) : null}
       </div>
 
       <input

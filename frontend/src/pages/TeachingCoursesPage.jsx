@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
-  Archive, BookOpen, ChevronDown, FileText, Film, FolderPlus, Link2, Music, Pencil,
-  Plus, RefreshCw, Search, Trash2, UploadCloud, Video,
+  Archive, BookOpen, CheckCircle2, ChevronDown, Eye, FileText, Film, FolderPlus,
+  Image as ImageIcon, Layers, Link2, LoaderCircle, Music, Pencil, PlayCircle,
+  Plus, RefreshCw, Search, ShieldCheck, Sparkles, Star, Tag, Trash2, UploadCloud, Video,
 } from 'lucide-react';
 import {
   Alert, Badge, Button, Card, EmptyState, Field, IconButton, Input, Modal,
@@ -38,14 +39,111 @@ const emptyCourse = {
   capacity: '', accessDays: 365, isPublished: false, isFeatured: false, publishAtUtc: '',
 };
 
+function Section({ icon: Icon, title, note, children }) {
+  return (
+    <section className="rounded-[16px] border border-line bg-surface-soft/40 p-4">
+      <div className="mb-3 flex items-center gap-2.5">
+        <span className="grid size-9 place-items-center rounded-[11px] bg-primary-soft text-primary"><Icon size={17} /></span>
+        <div className="min-w-0">
+          <h3 className="text-[13px] font-bold text-ink">{title}</h3>
+          {note ? <p className="text-[10.5px] leading-4 text-muted">{note}</p> : null}
+        </div>
+      </div>
+      <div className="grid gap-3.5">{children}</div>
+    </section>
+  );
+}
+
+function courseReadiness(form) {
+  const checks = [
+    { key: 'title', label: 'عنوان واضح', ok: form.title.trim().length >= 3 },
+    { key: 'subject', label: 'المادة', ok: Boolean(form.subject.trim()) },
+    { key: 'grade', label: 'المرحلة والصف', ok: Boolean(form.stage) },
+    { key: 'desc', label: 'وصف مختصر', ok: Boolean(form.shortDescription.trim()) },
+    { key: 'cover', label: 'صورة الغلاف', ok: Boolean(form.coverUrl) },
+    { key: 'price', label: 'تسعير صحيح', ok: form.isFree || Number(form.price) > 0 },
+  ];
+  return { checks, done: checks.filter((item) => item.ok).length, total: checks.length };
+}
+
+function discountPercent(price, oldPrice) {
+  const now = Number(price) || 0;
+  const before = Number(oldPrice) || 0;
+  if (!now || before <= now) return 0;
+  return Math.round(((before - now) / before) * 100);
+}
+
+function CoursePreview({ open, onClose, course }) {
+  const c = course || emptyCourse;
+  const price = Number(c.price) || 0;
+  const oldPrice = Number(c.oldPrice) || 0;
+  const off = discountPercent(price, oldPrice);
+  const chips = [c.subject, c.grade, c.stage].filter(Boolean);
+  return (
+    <Modal open={open} onClose={onClose} size="xl" icon={Eye} title="معاينة الكورس كما يراها الطالب" description="هذه المعاينة تستخدم البيانات الحالية قبل الحفظ — تأكد من الشكل ثم احفظ الكورس."
+      footer={<Button variant="secondary" onClick={onClose}>رجوع للتعديل</Button>}>
+      <div className="py-2">
+        <article className="overflow-hidden rounded-[20px] border border-line bg-surface shadow-card">
+          <div className="relative h-44 bg-gradient-to-br from-primary/25 via-primary-soft to-emerald/15 sm:h-56">
+            {c.coverUrl ? <img src={assetUrl(c.coverUrl)} alt="" className="size-full object-cover" /> : (
+              <div className="grid size-full place-items-center">
+                <div className="text-center">
+                  <span className="mx-auto grid size-14 place-items-center rounded-[18px] bg-surface/80 text-primary shadow-soft backdrop-blur"><BookOpen size={26} /></span>
+                  <p className="mt-2 text-[11.5px] font-bold text-ink/70">أضف صورة غلاف ليظهر الكورس بشكل أقوى</p>
+                </div>
+              </div>
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-[rgba(3,7,18,.65)] via-transparent to-transparent" />
+            <div className="absolute inset-x-3 top-3 flex flex-wrap items-start justify-between gap-2">
+              <div className="flex flex-wrap gap-1.5">
+                <Badge tone={c.isFree ? 'emerald' : 'primary'} className="backdrop-blur">{c.isFree ? 'مجاني' : `${formatNumber(price)} ج.م`}</Badge>
+                {c.isFeatured ? <Badge tone="warning" className="backdrop-blur"><Star size={11} />مميز</Badge> : null}
+              </div>
+              <Badge tone={c.isPublished ? 'emerald' : 'neutral'} className="backdrop-blur">{c.isPublished ? 'منشور' : 'مسودة'}</Badge>
+            </div>
+            <div className="absolute inset-x-4 bottom-4">
+              <h3 className="line-clamp-2 font-display text-lg font-semibold leading-7 text-white drop-shadow sm:text-xl">{c.title.trim() || 'عنوان الكورس'}</h3>
+              <p className="mt-1 text-[11.5px] font-bold text-white/80">{deliveryLabels[c.deliveryMode] || 'أونلاين'}{chips.length ? ` · ${chips.join(' · ')}` : ''}</p>
+            </div>
+          </div>
+          <div className="grid gap-4 p-4 sm:p-5">
+            <p className="text-[12.5px] leading-6 text-muted">{c.shortDescription?.trim() || c.description?.trim() || 'أضف وصفاً مختصراً يوضح للطالب ماذا سيتعلم داخل الكورس.'}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {chips.map((chip) => <span key={chip} className="rounded-full border border-line bg-surface-soft px-2.5 py-1 text-[10.5px] font-bold text-muted">{chip}</span>)}
+              <span className="rounded-full border border-line bg-surface-soft px-2.5 py-1 text-[10.5px] font-bold text-muted">{formatNumber(c.accessDays)} يوم وصول</span>
+              {c.capacity ? <span className="rounded-full border border-line bg-surface-soft px-2.5 py-1 text-[10.5px] font-bold text-muted">حتى {formatNumber(c.capacity)} طالب</span> : null}
+            </div>
+            <div className="flex items-end justify-between gap-3 rounded-[14px] border border-line bg-surface-soft px-4 py-3">
+              <div>
+                <p className="text-[10.5px] text-muted">سعر الاشتراك</p>
+                <p className="mt-0.5 flex items-end gap-2">
+                  <span className="font-display text-xl font-semibold text-ink">{c.isFree ? 'مجاني' : `${formatNumber(price)} ج.م`}</span>
+                  {!c.isFree && off > 0 ? <span className="pb-1 text-[11px] text-subtle line-through">{formatNumber(oldPrice)} ج.م</span> : null}
+                </p>
+              </div>
+              {!c.isFree && off > 0 ? <Badge tone="danger">خصم {off}%</Badge> : null}
+              {c.introVideoUrl ? <Badge tone="blue"><PlayCircle size={11} />فيديو تعريفي</Badge> : null}
+            </div>
+          </div>
+        </article>
+        <p className="mt-3 flex items-center gap-1.5 text-[10.5px] text-subtle"><ShieldCheck size={12} />الطلاب يرون هذه البطاقة في كتالوج الكورسات، والمحتوى يُفتح بعد تأكيد الاشتراك.</p>
+      </div>
+    </Modal>
+  );
+}
+
 function CourseForm({ open, onClose, token, course, onSaved }) {
   const [form, setForm] = useState(emptyCourse);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [uploads, setUploads] = useState({ cover: { busy: false, progress: 0 }, intro: { busy: false, progress: 0 } });
 
   useEffect(() => {
     if (!open) return;
     setError('');
+    setPreviewOpen(false);
+    setUploads({ cover: { busy: false, progress: 0 }, intro: { busy: false, progress: 0 } });
     setForm(course ? {
       title: course.title || '',
       shortDescription: course.shortDescription || '',
@@ -69,7 +167,22 @@ function CourseForm({ open, onClose, token, course, onSaved }) {
 
   const set = (key) => (event) => setForm((prev) => ({ ...prev, [key]: event.target.value }));
 
+  const readiness = courseReadiness(form);
+  const percentReady = Math.round((readiness.done / readiness.total) * 100);
+  const activeUploads = Object.values(uploads).filter((state) => state.busy);
+  const uploading = activeUploads.length > 0;
+  const uploadProgress = uploading
+    ? Math.round(activeUploads.reduce((sum, state) => sum + state.progress, 0) / activeUploads.length)
+    : 100;
+  const uploadLabel = [
+    uploads.cover.busy ? 'صورة الغلاف' : '',
+    uploads.intro.busy ? 'الفيديو التعريفي' : '',
+  ].filter(Boolean).join(' + ');
+  const trackUpload = (key) => (state) => setUploads((prev) => ({ ...prev, [key]: state }));
+  const discount = discountPercent(form.price, form.oldPrice);
+
   async function save() {
+    if (uploading) { setError('انتظر حتى يكتمل رفع الملفات قبل الحفظ.'); return; }
     setError('');
     if (form.title.trim().length < 3) { setError('اكتب عنوانًا للكورس (3 أحرف على الأقل).'); return; }
     setBusy(true);
@@ -106,67 +219,143 @@ function CourseForm({ open, onClose, token, course, onSaved }) {
   }
 
   return (
-    <Modal open={open} onClose={onClose} size="xl" icon={BookOpen} title={course ? 'تعديل الكورس' : 'كورس جديد'} description="المحتوى المنشور يظهر للطلاب المرتبطين أو المشتركين فقط."
-      footer={<><Button variant="ghost" onClick={onClose}>إلغاء</Button><Button loading={busy} onClick={save}>{course ? 'حفظ التعديلات' : 'إنشاء الكورس'}</Button></>}>
-      <div className="grid gap-4 py-2">
-        {error ? <Alert tone="danger" onClose={() => setError('')}>{error}</Alert> : null}
-        <Field label="عنوان الكورس"><Input value={form.title} onChange={set('title')} placeholder="مثال: مراجعة الرياضيات — الصف الثالث الثانوي" /></Field>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="المادة">
-            <Input list="course-subject-suggestions" value={form.subject} onChange={set('subject')} placeholder="اختر أو اكتب المادة" />
-            <datalist id="course-subject-suggestions">
-              {SUBJECT_SUGGESTIONS.map((subject) => <option key={subject} value={subject} />)}
-            </datalist>
-          </Field>
-          <Field label="نمط الكورس">
-            <Select value={form.deliveryMode} onChange={set('deliveryMode')}>
-              <option value="Online">أونلاين</option>
-              <option value="Offline">حضوري</option>
-              <option value="Hybrid">مدمج</option>
-            </Select>
-          </Field>
-          <Field label="المرحلة">
-            <Select value={form.stage} onChange={(event) => setForm((prev) => ({ ...prev, stage: event.target.value, grade: '' }))}>
-              <option value="">كل المراحل</option>
-              {EDUCATION_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
-            </Select>
-          </Field>
-          <Field label="الصف">
-            <Select value={form.grade} onChange={set('grade')} disabled={!form.stage}>
-              <option value="">كل الصفوف</option>
-              {gradesForStage(form.stage).map((grade) => <option key={grade} value={grade}>{grade}</option>)}
-            </Select>
-          </Field>
+    <>
+      <Modal open={open} onClose={onClose} size="xl" icon={BookOpen} title={course ? 'تعديل الكورس' : 'كورس جديد'}
+        description="ابنِ كورساً احترافياً: الهوية والوسائط والتسعير ثم معاينة الشكل كما يراه الطالب."
+        footer={<>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>إلغاء</Button>
+          <Button variant="secondary" icon={Eye} onClick={() => setPreviewOpen(true)} disabled={busy}>معاينة كطالب</Button>
+          <Button loading={busy} disabled={uploading} onClick={save}>
+            {uploading ? `جارٍ الرفع ${uploadProgress}%` : course ? 'حفظ التعديلات' : 'إنشاء الكورس'}
+          </Button>
+        </>}>
+        <div className="grid gap-4 py-2">
+          {error ? <Alert tone="danger" onClose={() => setError('')}>{error}</Alert> : null}
+
+          <div className="relative overflow-hidden rounded-[18px] border border-line bg-gradient-to-l from-primary/10 via-surface to-emerald/10 p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-[16px] border border-line bg-surface shadow-soft">
+                {form.coverUrl ? <img src={assetUrl(form.coverUrl)} alt="" className="size-full object-cover" /> : <ImageIcon size={22} className="text-subtle" />}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Badge tone={form.isPublished ? 'emerald' : 'warning'} dot>{form.isPublished ? 'سيُنشر بعد الحفظ' : 'مسودة'}</Badge>
+                  <Badge tone="neutral">{deliveryLabels[form.deliveryMode]}</Badge>
+                  {form.isFree ? <Badge tone="emerald">مجاني</Badge> : <Badge tone="primary">{formatNumber(form.price)} ج.م</Badge>}
+                </div>
+                <p className="mt-1.5 truncate text-[14px] font-bold text-ink">{form.title.trim() || 'كورس بدون عنوان بعد'}</p>
+                <p className="truncate text-[10.5px] text-muted">{[form.subject, form.grade, form.stage].filter(Boolean).join(' · ') || 'حدد المادة والمرحلة ليظهر الكورس بشكل كامل'}</p>
+              </div>
+              <Button size="sm" variant="soft" icon={Eye} onClick={() => setPreviewOpen(true)} disabled={busy} className="hidden sm:inline-flex">معاينة</Button>
+            </div>
+            <div className="mt-3">
+              <div className="flex items-center justify-between text-[10.5px] font-bold">
+                <span className="text-muted">جاهزية الكورس</span>
+                <span className="text-primary">{readiness.done}/{readiness.total} · {percentReady}%</span>
+              </div>
+              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface">
+                <motion.span className="block h-full rounded-full bg-gradient-to-l from-primary to-emerald" initial={false} animate={{ width: `${percentReady}%` }} transition={{ duration: 0.4, ease: 'easeOut' }} />
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {readiness.checks.map((item) => (
+                  <span key={item.key} className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold', item.ok ? 'border-emerald/30 bg-emerald-soft text-emerald' : 'border-line bg-surface text-subtle')}>
+                    {item.ok ? <CheckCircle2 size={10} /> : <span className="size-1.5 rounded-full bg-current" />}{item.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {uploading ? (
+            <div className="rounded-[14px] border border-primary/25 bg-primary-soft/60 px-3.5 py-3">
+              <div className="flex items-center justify-between gap-2 text-[11.5px] font-bold text-primary">
+                <span className="inline-flex items-center gap-1.5"><LoaderCircle size={13} className="animate-spin" />جارٍ رفع {uploadLabel}…</span>
+                <span>{uploadProgress}%</span>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface">
+                <motion.span className="relative block h-full overflow-hidden rounded-full bg-gradient-to-l from-primary via-emerald to-primary" initial={false} animate={{ width: `${uploadProgress}%` }} transition={{ ease: 'easeOut', duration: 0.35 }}>
+                  <motion.span className="absolute inset-0 bg-[linear-gradient(110deg,transparent_25%,rgba(255,255,255,.6)_50%,transparent_75%)]" animate={{ x: ['-100%', '100%'] }} transition={{ duration: 1.1, repeat: Infinity, ease: 'linear' }} />
+                </motion.span>
+              </div>
+              <p className="mt-1.5 text-[10px] text-muted">زر الحفظ مقفول تلقائياً حتى يكتمل الرفع — بياناتك في النموذج لن تضيع.</p>
+            </div>
+          ) : null}
+
+          <Section icon={Sparkles} title="الهوية الأساسية" note="العنوان والتصنيف هما أول ما يراه الطالب في الكتالوج.">
+            <Field label="عنوان الكورس"><Input value={form.title} onChange={set('title')} placeholder="مثال: مراجعة الرياضيات — الصف الثالث الثانوي" /></Field>
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              <Field label="المادة">
+                <Input list="course-subject-suggestions" value={form.subject} onChange={set('subject')} placeholder="اختر أو اكتب المادة" />
+                <datalist id="course-subject-suggestions">
+                  {SUBJECT_SUGGESTIONS.map((subject) => <option key={subject} value={subject} />)}
+                </datalist>
+              </Field>
+              <Field label="نمط الكورس">
+                <Select value={form.deliveryMode} onChange={set('deliveryMode')}>
+                  <option value="Online">أونلاين</option>
+                  <option value="Offline">حضوري</option>
+                  <option value="Hybrid">مدمج</option>
+                </Select>
+              </Field>
+              <Field label="المرحلة">
+                <Select value={form.stage} onChange={(event) => setForm((prev) => ({ ...prev, stage: event.target.value, grade: '' }))}>
+                  <option value="">كل المراحل</option>
+                  {EDUCATION_STAGES.map((stage) => <option key={stage} value={stage}>{stage}</option>)}
+                </Select>
+              </Field>
+              <Field label="الصف">
+                <Select value={form.grade} onChange={set('grade')} disabled={!form.stage}>
+                  <option value="">كل الصفوف</option>
+                  {gradesForStage(form.stage).map((grade) => <option key={grade} value={grade}>{grade}</option>)}
+                </Select>
+              </Field>
+            </div>
+            <Field label="وصف مختصر" hint="سطر أو سطران يظهران تحت العنوان في بطاقة الكورس.">
+              <Input value={form.shortDescription} onChange={set('shortDescription')} maxLength={500} />
+            </Field>
+            <Field label="الوصف الكامل"><Textarea value={form.description} onChange={set('description')} className="min-h-24" /></Field>
+          </Section>
+
+          <Section icon={ImageIcon} title="الوسائط والعرض" note="غلاف احترافي وفيديو تعريفي يرفعان نسبة الاشتراك.">
+            <ImageUploader token={token} value={form.coverUrl} onChange={(url) => setForm((prev) => ({ ...prev, coverUrl: url }))} label="صورة الغلاف" aspect="cover" onStateChange={trackUpload('cover')} />
+            <MediaUploader token={token} kind="Video" value={form.introVideoUrl} onChange={(url) => setForm((prev) => ({ ...prev, introVideoUrl: url }))} label="الفيديو التعريفي (اختياري)" hint="ارفع فيديو من جهازك أو الصق رابطاً خارجياً." onStateChange={trackUpload('intro')} />
+          </Section>
+
+          <Section icon={Tag} title="التسعير والوصول" note="حدد السعر ومدة الوصول وعدد الطلاب.">
+            <div className="grid gap-3.5 sm:grid-cols-3">
+              <Field label="نوع الاشتراك">
+                <Select value={form.isFree ? 'yes' : 'no'} onChange={(event) => setForm((prev) => ({ ...prev, isFree: event.target.value === 'yes' }))}>
+                  <option value="yes">مجاني للجميع</option>
+                  <option value="no">مدفوع</option>
+                </Select>
+              </Field>
+              <Field label="السعر (ج.م)"><Input type="number" min="0" value={form.price} onChange={set('price')} disabled={form.isFree} /></Field>
+              <Field label="السعر قبل الخصم"><Input type="number" min="0" value={form.oldPrice} onChange={set('oldPrice')} /></Field>
+              <Field label="الحد الأقصى للطلاب"><Input type="number" min="1" value={form.capacity} onChange={set('capacity')} placeholder="بلا حد" /></Field>
+              <Field label="مدة الوصول (أيام)"><Input type="number" min="0" value={form.accessDays} onChange={set('accessDays')} /></Field>
+              <Field label="جدولة النشر"><Input type="datetime-local" value={form.publishAtUtc} onChange={set('publishAtUtc')} /></Field>
+            </div>
+            {!form.isFree && discount > 0 ? (
+              <p className="flex items-center gap-1.5 rounded-[10px] border border-danger/20 bg-danger-soft px-3 py-2 text-[10.5px] font-bold text-danger"><Sparkles size={12} />سيظهر للطالب خصم {discount}% على السعر قبل الخصم.</p>
+            ) : null}
+          </Section>
+
+          <Section icon={ShieldCheck} title="النشر والظهور" note="يمكنك الحفظ كمسودة وإكمال المحتوى لاحقاً.">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className={cn('flex cursor-pointer items-start gap-2.5 rounded-[12px] border px-3 py-2.5 text-[11.5px] font-bold transition', form.isPublished ? 'border-primary bg-primary-soft text-primary' : 'border-line bg-surface text-muted')}>
+                <input type="checkbox" className="mt-0.5 accent-primary" checked={form.isPublished} onChange={(event) => setForm((prev) => ({ ...prev, isPublished: event.target.checked }))} />
+                <span><span className="block">نشر الكورس الآن</span><span className="block text-[10px] font-normal text-muted">يظهر مباشرة في كتالوج الطلاب</span></span>
+              </label>
+              <label className={cn('flex cursor-pointer items-start gap-2.5 rounded-[12px] border px-3 py-2.5 text-[11.5px] font-bold transition', form.isFeatured ? 'border-warning/40 bg-warning-soft text-warning' : 'border-line bg-surface text-muted')}>
+                <input type="checkbox" className="mt-0.5 accent-primary" checked={form.isFeatured} onChange={(event) => setForm((prev) => ({ ...prev, isFeatured: event.target.checked }))} />
+                <span><span className="block">إبراز في الكتالوج</span><span className="block text-[10px] font-normal text-muted">بطاقة مميزة أعلى القائمة</span></span>
+              </label>
+            </div>
+          </Section>
         </div>
-        <Field label="وصف مختصر"><Input value={form.shortDescription} onChange={set('shortDescription')} maxLength={500} /></Field>
-        <Field label="الوصف الكامل"><Textarea value={form.description} onChange={set('description')} className="min-h-24" /></Field>
-        <ImageUploader token={token} value={form.coverUrl} onChange={(url) => setForm((prev) => ({ ...prev, coverUrl: url }))} label="صورة الغلاف" aspect="video" />
-        <MediaUploader token={token} kind="Video" value={form.introVideoUrl} onChange={(url) => setForm((prev) => ({ ...prev, introVideoUrl: url }))} label="الفيديو التعريفي (اختياري)" hint="ارفع فيديو من جهازك أو الصق رابطاً خارجياً." />
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="مجاني للجميع">
-            <Select value={form.isFree ? 'yes' : 'no'} onChange={(event) => setForm((prev) => ({ ...prev, isFree: event.target.value === 'yes' }))}>
-              <option value="yes">نعم</option>
-              <option value="no">لا — مدفوع</option>
-            </Select>
-          </Field>
-          <Field label="السعر (ج.م)"><Input type="number" min="0" value={form.price} onChange={set('price')} disabled={form.isFree} /></Field>
-          <Field label="السعر قبل الخصم"><Input type="number" min="0" value={form.oldPrice} onChange={set('oldPrice')} /></Field>
-          <Field label="الحد الأقصى للطلاب"><Input type="number" min="1" value={form.capacity} onChange={set('capacity')} placeholder="بلا حد" /></Field>
-          <Field label="مدة الوصول (أيام)"><Input type="number" min="0" value={form.accessDays} onChange={set('accessDays')} /></Field>
-          <Field label="جدولة النشر"><Input type="datetime-local" value={form.publishAtUtc} onChange={set('publishAtUtc')} /></Field>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <label className="flex items-center gap-2 rounded-xl border border-line bg-surface-soft px-3 py-2 text-xs font-bold">
-            <input type="checkbox" className="accent-primary" checked={form.isPublished} onChange={(event) => setForm((prev) => ({ ...prev, isPublished: event.target.checked }))} />
-            نشر الكورس الآن
-          </label>
-          <label className="flex items-center gap-2 rounded-xl border border-line bg-surface-soft px-3 py-2 text-xs font-bold">
-            <input type="checkbox" className="accent-primary" checked={form.isFeatured} onChange={(event) => setForm((prev) => ({ ...prev, isFeatured: event.target.checked }))} />
-            إبراز في الكتالوج
-          </label>
-        </div>
-      </div>
-    </Modal>
+      </Modal>
+      <CoursePreview open={previewOpen} onClose={() => setPreviewOpen(false)} course={form} />
+    </>
   );
 }
 
@@ -191,6 +380,7 @@ export default function TeachingCoursesPage({ token }) {
   const [status, setStatus] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [previewCourse, setPreviewCourse] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -358,14 +548,32 @@ export default function TeachingCoursesPage({ token }) {
     const course = detail.course;
     return (
       <div>
-        <PageHeader eyebrow="إدارة المحتوى" title={course.title} description={course.shortDescription || 'وحدات ودروس ومواد الكورس.'}
-          action={<>
-            <Button variant="secondary" size="sm" onClick={() => setSelectedId(null)}>كل الكورسات</Button>
-            <Button variant="secondary" size="sm" icon={Pencil} onClick={() => { setEditing(course); setFormOpen(true); }}>تعديل</Button>
-            <Button size="sm" variant={course.isPublished ? 'secondary' : 'primary'} loading={busy === course.id} onClick={() => togglePublish(course, !course.isPublished)}>
-              {course.isPublished ? 'إخفاء عن الطلاب' : 'نشر الكورس'}
-            </Button>
-          </>} />
+        <Card className="mb-4 overflow-hidden">
+          <div className="relative h-40 bg-gradient-to-br from-primary/30 via-primary-soft to-emerald/20 sm:h-52">
+            {course.coverUrl ? <img src={assetUrl(course.coverUrl)} alt="" className="size-full object-cover" /> : null}
+            <div className="absolute inset-0 bg-gradient-to-t from-[rgba(3,7,18,.74)] via-[rgba(3,7,18,.2)] to-transparent" />
+            <div className="absolute inset-x-3 top-3 flex flex-wrap items-start justify-between gap-2 sm:inset-x-4 sm:top-4">
+              <Button variant="secondary" size="sm" onClick={() => setSelectedId(null)}>كل الكورسات</Button>
+              <div className="flex flex-wrap gap-1.5">
+                <Button variant="secondary" size="sm" icon={Eye} onClick={() => setPreviewCourse(course)}>معاينة كطالب</Button>
+                <Button variant="secondary" size="sm" icon={Pencil} onClick={() => { setEditing(course); setFormOpen(true); }}>تعديل</Button>
+                <Button size="sm" variant={course.isPublished ? 'secondary' : 'primary'} loading={busy === course.id} onClick={() => togglePublish(course, !course.isPublished)}>
+                  {course.isPublished ? 'إخفاء عن الطلاب' : 'نشر الكورس'}
+                </Button>
+              </div>
+            </div>
+            <div className="absolute inset-x-4 bottom-4">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge tone={course.isPublished ? 'emerald' : 'warning'} dot>{course.isArchived ? 'مؤرشف' : course.isPublished ? 'منشور' : 'مسودة'}</Badge>
+                {course.isFeatured ? <Badge tone="warning"><Star size={11} />مميز</Badge> : null}
+                <Badge tone="neutral" className="backdrop-blur">{deliveryLabels[course.deliveryMode] || course.deliveryMode}</Badge>
+                {course.isFree ? <Badge tone="emerald">مجاني</Badge> : <Badge tone="primary">{formatNumber(course.price)} ج.م</Badge>}
+              </div>
+              <h1 className="mt-1.5 line-clamp-2 font-display text-xl font-semibold leading-8 text-white drop-shadow sm:text-2xl">{course.title}</h1>
+              <p className="mt-0.5 text-[11.5px] font-bold text-white/80">{[course.subject, course.grade, course.stage].filter(Boolean).join(' · ') || course.shortDescription || 'وحدات ودروس ومواد الكورس.'}</p>
+            </div>
+          </div>
+        </Card>
         {error ? <Alert tone="danger" className="mb-4" onClose={() => setError('')}>{error}</Alert> : null}
         {notice ? <Alert tone="success" className="mb-4" onClose={() => setNotice('')}>{notice}</Alert> : null}
 
@@ -454,6 +662,7 @@ export default function TeachingCoursesPage({ token }) {
         </Card>
 
         <CourseForm open={formOpen} onClose={() => setFormOpen(false)} token={token} course={editing} onSaved={() => loadDetail(selectedId, true)} />
+        <CoursePreview open={Boolean(previewCourse)} onClose={() => setPreviewCourse(null)} course={previewCourse} />
         <SmallForm open={unitOpen} onClose={() => setUnitOpen(false)} title="وحدة جديدة" icon={FolderPlus} busy={modalBusy} error={modalError} onSave={addUnit}>
           <Field label="عنوان الوحدة"><Input value={unitForm.title} onChange={(e) => setUnitForm((p) => ({ ...p, title: e.target.value }))} /></Field>
           <Field label="وصف مختصر"><Textarea value={unitForm.description} onChange={(e) => setUnitForm((p) => ({ ...p, description: e.target.value }))} className="min-h-20" /></Field>
@@ -526,42 +735,56 @@ export default function TeachingCoursesPage({ token }) {
       ) : items.length === 0 ? (
         <Card><EmptyState icon={BookOpen} title="لا توجد كورسات بعد" description="ابدأ بإنشاء كورس ثم أضف الوحدات والدروس والمواد." action={<Button icon={Plus} onClick={() => { setEditing(null); setFormOpen(true); }}>كورس جديد</Button>} /></Card>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {items.map((course) => (
-            <Card key={course.id} hover className="flex flex-col overflow-hidden">
-              {course.coverUrl ? (
-                <button type="button" onClick={() => setSelectedId(course.id)} className="block h-32 w-full overflow-hidden bg-surface-soft">
-                  <img src={assetUrl(course.coverUrl)} alt="" className="h-full w-full object-cover transition duration-300 hover:scale-105" loading="lazy" />
+        <div className="grid gap-3.5 md:grid-cols-2 xl:grid-cols-3">
+          {items.map((course) => {
+            const discount = discountPercent(course.price, course.oldPrice);
+            return (
+              <Card key={course.id} hover className="group flex flex-col overflow-hidden">
+                <button type="button" onClick={() => setSelectedId(course.id)} className="relative block h-40 w-full overflow-hidden bg-gradient-to-br from-primary/20 via-primary-soft to-emerald/15 text-right">
+                  {course.coverUrl ? (
+                    <img src={assetUrl(course.coverUrl)} alt="" className="size-full object-cover transition duration-500 group-hover:scale-[1.04]" loading="lazy" />
+                  ) : (
+                    <span className="grid size-full place-items-center"><span className="grid size-12 place-items-center rounded-[16px] bg-surface/80 text-primary shadow-soft backdrop-blur"><BookOpen size={22} /></span></span>
+                  )}
+                  <span className="absolute inset-0 bg-gradient-to-t from-[rgba(3,7,18,.6)] via-transparent to-transparent" />
+                  <span className="absolute inset-x-3 top-3 flex items-start justify-between gap-2">
+                    <Badge tone={course.isArchived ? 'danger' : course.isPublished ? 'emerald' : 'warning'} dot className="backdrop-blur">
+                      {course.isArchived ? 'مؤرشف' : course.isPublished ? 'منشور' : 'مسودة'}
+                    </Badge>
+                    <span className="flex flex-wrap justify-end gap-1">
+                      {course.isFeatured ? <Badge tone="warning" className="backdrop-blur"><Star size={10} />مميز</Badge> : null}
+                      <Badge tone={course.isFree ? 'emerald' : 'primary'} className="backdrop-blur">{course.isFree ? 'مجاني' : `${formatNumber(course.price)} ج.م`}</Badge>
+                    </span>
+                  </span>
+                  {discount > 0 ? <span className="absolute bottom-3 left-3 rounded-full bg-danger px-2 py-1 text-[10px] font-bold text-white shadow">خصم {discount}%</span> : null}
+                  <span className="absolute inset-x-3 bottom-3 text-[10.5px] font-bold text-white/85">{deliveryLabels[course.deliveryMode] || course.deliveryMode}{course.grade ? ` · ${course.grade}` : ''}</span>
                 </button>
-              ) : null}
-              <div className="flex flex-1 flex-col p-4">
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex flex-1 flex-col p-4">
                   <button type="button" onClick={() => setSelectedId(course.id)} className="min-w-0 text-right">
-                    <h3 className="truncate text-[14px] font-bold">{course.title}</h3>
-                    <p className="mt-0.5 text-[10.5px] text-muted">{course.subject || 'بدون مادة'} · {deliveryLabels[course.deliveryMode] || course.deliveryMode}</p>
+                    <h3 className="truncate text-[14px] font-bold text-ink">{course.title}</h3>
+                    <p className="mt-0.5 truncate text-[10.5px] text-muted">{course.subject || 'بدون مادة'}{course.stage ? ` · ${course.stage}` : ''}</p>
                   </button>
-                  <Badge tone={course.isPublished ? 'emerald' : course.isArchived ? 'danger' : 'warning'}>
-                    {course.isArchived ? 'مؤرشف' : course.isPublished ? 'منشور' : 'مسودة'}
-                  </Badge>
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-[10px] border border-line bg-surface-soft py-2"><p className="text-[13px] font-bold">{formatNumber(course.lessons)}</p><p className="text-[10px] text-muted">درس</p></div>
+                    <div className="rounded-[10px] border border-line bg-surface-soft py-2"><p className="text-[13px] font-bold">{formatNumber(course.students)}</p><p className="text-[10px] text-muted">طالب</p></div>
+                    <div className="rounded-[10px] border border-line bg-surface-soft py-2"><p className="text-[13px] font-bold">{formatNumber(course.accessDays)}</p><p className="text-[10px] text-muted">يوم وصول</p></div>
+                  </div>
+                  <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-3.5">
+                    <Button size="xs" icon={Layers} onClick={() => setSelectedId(course.id)}>إدارة المحتوى</Button>
+                    <Button size="xs" variant="secondary" icon={Eye} onClick={() => setPreviewCourse(course)}>معاينة</Button>
+                    <Button size="xs" variant="secondary" icon={Pencil} onClick={() => { setEditing(course); setFormOpen(true); }}>تعديل</Button>
+                    <Button size="xs" variant={course.isPublished ? 'ghost' : 'soft'} loading={busy === course.id} onClick={() => togglePublish(course, !course.isPublished)}>{course.isPublished ? 'إخفاء' : 'نشر'}</Button>
+                    <Button size="xs" variant="ghost" icon={Archive} onClick={() => archive(course)}>أرشفة</Button>
+                  </div>
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                  <div className="rounded-lg bg-surface-soft py-2"><p className="text-[13px] font-bold">{formatNumber(course.lessons)}</p><p className="text-[10px] text-muted">درس</p></div>
-                  <div className="rounded-lg bg-surface-soft py-2"><p className="text-[13px] font-bold">{formatNumber(course.students)}</p><p className="text-[10px] text-muted">طالب</p></div>
-                  <div className="rounded-lg bg-surface-soft py-2"><p className="text-[13px] font-bold">{course.isFree ? 'مجاني' : formatNumber(course.price)}</p><p className="text-[10px] text-muted">{course.isFree ? '' : 'ج.م'}</p></div>
-                </div>
-                <div className="mt-auto flex flex-wrap gap-2 pt-3">
-                  <Button size="xs" onClick={() => setSelectedId(course.id)}>إدارة المحتوى</Button>
-                  <Button size="xs" variant="secondary" icon={Pencil} onClick={() => { setEditing(course); setFormOpen(true); }}>تعديل</Button>
-                  <Button size="xs" variant={course.isPublished ? 'ghost' : 'soft'} loading={busy === course.id} onClick={() => togglePublish(course, !course.isPublished)}>{course.isPublished ? 'إخفاء' : 'نشر'}</Button>
-                  <Button size="xs" variant="ghost" icon={Archive} onClick={() => archive(course)}>أرشفة</Button>
-                </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       )}
 
       <CourseForm open={formOpen} onClose={() => setFormOpen(false)} token={token} course={editing} onSaved={(id) => { load(true); if (!editing && id) setSelectedId(id); }} />
+      <CoursePreview open={Boolean(previewCourse)} onClose={() => setPreviewCourse(null)} course={previewCourse} />
       {detailLoading ? <div className="fixed inset-0 z-50 grid place-items-center bg-[rgba(3,7,18,.4)]"><Skeleton className="h-16 w-16 rounded-full" /></div> : null}
     </div>
   );

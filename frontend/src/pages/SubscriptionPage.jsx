@@ -8,7 +8,9 @@ import {
   Select, Skeleton, StatCard, cn,
 } from '../components/ui';
 import ImageUploader from '../components/ImageUploader';
+import PaymentDetails, { methodOptions, usePaymentMethods } from '../components/PaymentDetails';
 import { request } from '../lib/api';
+import { methodLabel } from '../lib/paymentMethods';
 import { formatDate, formatNumber } from '../lib/format';
 
 const featureLabels = {
@@ -39,15 +41,6 @@ const statusMeta = {
   Grace: { label: 'فترة سماح', tone: 'info' },
 };
 
-const paymentMethods = [
-  { value: 'VodafoneCash', label: 'فودافون كاش' },
-  { value: 'InstaPay', label: 'إنستا باي' },
-  { value: 'BankTransfer', label: 'تحويل بنكي' },
-  { value: 'Cash', label: 'نقدي (تسليم للإدارة)' },
-  { value: 'Online', label: 'أونلاين' },
-];
-const methodLabels = Object.fromEntries(paymentMethods.map((item) => [item.value, item.label]));
-
 const money = (value, currency = 'EGP') => `${formatNumber(Number(value) || 0)} ${currency === 'EGP' ? 'ج.م' : currency}`;
 
 export default function SubscriptionPage({ token, onConfirmed }) {
@@ -62,6 +55,8 @@ export default function SubscriptionPage({ token, onConfirmed }) {
   const [payForm, setPayForm] = useState({ method: 'VodafoneCash', reference: '', receiptUrl: '', periods: 1 });
   const [payError, setPayError] = useState('');
   const [paying, setPaying] = useState(false);
+  const paymentInfo = usePaymentMethods(token);
+  const methods = methodOptions(paymentInfo.items);
 
   const load = useCallback(async (background = false) => {
     if (background) setRefreshing(true); else setLoading(true);
@@ -113,7 +108,7 @@ export default function SubscriptionPage({ token, onConfirmed }) {
 
   function openPaid(plan) {
     setSelectedPlan(plan);
-    setPayForm({ method: 'VodafoneCash', reference: '', receiptUrl: '', periods: 1 });
+    setPayForm({ method: methods[0]?.value || 'VodafoneCash', reference: '', receiptUrl: '', periods: 1 });
     setPayError('');
   }
 
@@ -302,7 +297,7 @@ export default function SubscriptionPage({ token, onConfirmed }) {
                         {payment.status === 'Approved' ? 'مقبولة' : payment.status === 'Rejected' ? 'مرفوضة' : 'قيد المراجعة'}
                       </Badge>
                     </div>
-                    <p className="mt-1 text-muted">{methodLabels[payment.method] || payment.method} · {formatDate(payment.createdAtUtc)}</p>
+                    <p className="mt-1 text-muted">{methodLabel(payment.method)} · {formatDate(payment.createdAtUtc)}</p>
                     {payment.adminNote ? <p className="mt-1 text-[10.5px] text-danger">{payment.adminNote}</p> : null}
                   </div>
                 ))}
@@ -321,7 +316,7 @@ export default function SubscriptionPage({ token, onConfirmed }) {
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="طريقة الدفع">
                 <Select value={payForm.method} onChange={(e) => setPayForm((p) => ({ ...p, method: e.target.value }))}>
-                  {paymentMethods.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}
+                  {methods.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}
                 </Select>
               </Field>
               <Field label="عدد الدورات" hint="كل دورة = مدة الخطة.">
@@ -331,6 +326,7 @@ export default function SubscriptionPage({ token, onConfirmed }) {
               </Field>
               <Field label="رقم العملية / المرجع"><Input value={payForm.reference} onChange={(e) => setPayForm((p) => ({ ...p, reference: e.target.value }))} dir="ltr" /></Field>
             </div>
+            <PaymentDetails token={token} method={payForm.method} />
             <div className="rounded-xl bg-surface-soft p-3 text-[12px] font-bold">
               الإجمالي: <span className="text-primary">{money(Number(selectedPlan.price) * Math.max(1, Number(payForm.periods) || 1), selectedPlan.currency)}</span>
             </div>

@@ -7,12 +7,11 @@ import {
 } from '../components/ui';
 import { request } from '../lib/api';
 import ImageUploader from '../components/ImageUploader';
+import PaymentDetails, { methodOptions, usePaymentMethods } from '../components/PaymentDetails';
+import { methodLabel } from '../lib/paymentMethods';
 import { formatDate, formatNumber } from '../lib/format';
 
 const money = (value) => `${formatNumber(Number(value) || 0)} ج.م`;
-const methodLabels = {
-  Cash: 'نقدي', VodafoneCash: 'فودافون كاش', InstaPay: 'إنستا باي', BankTransfer: 'تحويل بنكي', Online: 'أونلاين',
-};
 const adjustmentLabels = { Discount: 'خصم', Scholarship: 'منحة', Refund: 'استرداد', Correction: 'تصحيح' };
 const MONTHS = Array.from({ length: 12 }, (_, i) => new Date(2024, i, 1).toLocaleDateString('ar-EG', { month: 'long' }));
 const YEARS = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 1 + i);
@@ -43,6 +42,8 @@ export default function StudentFinancePage({ token }) {
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
   const [notice, setNotice] = useState('');
+  const paymentInfo = usePaymentMethods(token);
+  const methods = methodOptions(paymentInfo.items);
 
   const flash = useCallback((message) => {
     setNotice(message);
@@ -187,7 +188,7 @@ export default function StudentFinancePage({ token }) {
                       <td className="px-4 py-2.5 font-mono text-[10.5px]">{row.receiptNumber || '—'}</td>
                       <td className="px-4 py-2.5 font-bold text-ink">{row.teacherName || '—'}</td>
                       <td className="px-4 py-2.5 font-extrabold">{money(row.amount)}</td>
-                      <td className="px-4 py-2.5">{methodLabels[row.method] || row.method}</td>
+                      <td className="px-4 py-2.5">{methodLabel(row.method)}</td>
                       <td className="px-4 py-2.5 text-muted">{formatDate(row.paidAtUtc)}</td>
                     </tr>
                   ))}
@@ -219,7 +220,7 @@ export default function StudentFinancePage({ token }) {
               <h3 className="font-display text-[15px] font-semibold text-ink">طلبات دفع المجموعات</h3>
               <p className="mt-0.5 text-[11.5px] text-muted">أرسل طلباً بالمبلغ وعدد الحصص أو الشهر، وسيؤكده معلمك.</p>
             </div>
-            <Button size="sm" icon={Plus} disabled={groups.length === 0} onClick={() => { setForm(emptyRequest()); setFormError(''); setFormOpen(true); }}>طلب دفع جديد</Button>
+            <Button size="sm" icon={Plus} disabled={groups.length === 0} onClick={() => { setForm({ ...emptyRequest(), method: methods[0]?.value || 'Cash' }); setFormError(''); setFormOpen(true); }}>طلب دفع جديد</Button>
           </Card>
 
           {groups.length === 0 ? <Alert tone="info">تحتاج للانضمام إلى مجموعة مقبولة من معلمك أولاً حتى تستطيع إرسال طلب دفع.</Alert> : null}
@@ -244,7 +245,7 @@ export default function StudentFinancePage({ token }) {
                           ? `${formatNumber(row.sessionsCount || 0)} حصة`
                           : `شهر ${MONTHS[(Number(row.periodMonth) || 1) - 1]} ${row.periodYear || ''}`}
                       </p>
-                      <p className="mt-0.5 text-[11px] text-muted">{methodLabels[row.method] || row.method} · {formatDate(row.createdAtUtc)}</p>
+                      <p className="mt-0.5 text-[11px] text-muted">{methodLabel(row.method)} · {formatDate(row.createdAtUtc)}</p>
                       {row.notes ? <p className="mt-0.5 text-[11px] text-subtle">{row.notes}</p> : null}
                       {row.reviewNote ? <p className="mt-1 text-[11px] font-bold text-ink">ملاحظة المدرس: {row.reviewNote}</p> : null}
                       {row.status === 'Approved' && row.receiptNumber ? <p className="mt-1 font-mono text-[10.5px] text-emerald">إيصال: {row.receiptNumber}</p> : null}
@@ -278,7 +279,7 @@ export default function StudentFinancePage({ token }) {
                         <span className="text-[10.5px] text-muted">{row.teacherName || 'معلم'}</span>
                       </div>
                       <p className="mt-1.5 text-[13px] font-bold text-ink">{money(row.amount)}</p>
-                      <p className="mt-0.5 text-[11px] text-muted">{methodLabels[row.method] || row.method} · {formatDate(row.createdAtUtc)}</p>
+                      <p className="mt-0.5 text-[11px] text-muted">{methodLabel(row.method)} · {formatDate(row.createdAtUtc)}</p>
                       {row.notes ? <p className="mt-0.5 text-[11px] text-subtle">{row.notes}</p> : null}
                       {row.reviewNote ? <p className="mt-1 text-[11px] font-bold text-ink">ملاحظة المدرس: {row.reviewNote}</p> : null}
                       {row.receiptUrl ? <a href={row.receiptUrl} target="_blank" rel="noreferrer" className="mt-1 inline-flex text-[11px] font-bold text-primary underline">عرض صورة التحويل</a> : null}
@@ -343,7 +344,7 @@ export default function StudentFinancePage({ token }) {
               </Field>
               <Field label="طريقة الدفع">
                 <Select value={form.method} onChange={(e) => setForm((p) => ({ ...p, method: e.target.value }))}>
-                  {Object.entries(methodLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  {methods.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}
                 </Select>
               </Field>
               <Field label="الدفع مقابل">
@@ -374,6 +375,7 @@ export default function StudentFinancePage({ token }) {
                 <Input value={form.reference} onChange={(e) => setForm((p) => ({ ...p, reference: e.target.value }))} />
               </Field>
             </div>
+            <PaymentDetails token={token} method={form.method} />
             <Field label="ملاحظات (اختياري)">
               <Textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="min-h-20" />
             </Field>

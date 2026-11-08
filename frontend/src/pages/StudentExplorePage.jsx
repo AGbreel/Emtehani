@@ -7,6 +7,7 @@ import {
   Alert, Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, Segmented, Select, Skeleton, Textarea, cn,
 } from '../components/ui';
 import ImageUploader from '../components/ImageUploader';
+import PaymentDetails, { methodOptions, usePaymentMethods } from '../components/PaymentDetails';
 import { assetUrl, request } from '../lib/api';
 import { formatDate, formatDuration, formatNumber } from '../lib/format';
 
@@ -42,6 +43,8 @@ export default function StudentExplorePage({ token, onOpenTeachers }) {
   const [payForm, setPayForm] = useState({ method: 'InstaPay', amount: '', reference: '', notes: '', receiptUrl: '' });
   const [payError, setPayError] = useState('');
   const [payBusy, setPayBusy] = useState(false);
+  const paymentInfo = usePaymentMethods(token);
+  const methods = methodOptions(paymentInfo.items);
 
   const load = useCallback(async (background = false) => {
     if (background) setRefreshing(true); else setLoading(true);
@@ -145,7 +148,7 @@ export default function StudentExplorePage({ token, onOpenTeachers }) {
   function openCoursePayment(course) {
     setPayCourse(course);
     setPayForm({
-      method: 'InstaPay',
+      method: methods[0]?.value || 'InstaPay',
       amount: course?.price ? String(course.price) : '',
       reference: '', notes: '', receiptUrl: '',
     });
@@ -533,14 +536,11 @@ export default function StudentExplorePage({ token, onOpenTeachers }) {
               </Field>
               <Field label="طريقة الدفع">
                 <Select value={payForm.method} onChange={(e) => setPayForm((p) => ({ ...p, method: e.target.value }))}>
-                  <option value="InstaPay">إنستا باي</option>
-                  <option value="VodafoneCash">فودافون كاش</option>
-                  <option value="BankTransfer">تحويل بنكي</option>
-                  <option value="Online">أونلاين</option>
-                  <option value="Cash">نقدي</option>
+                  {methods.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}
                 </Select>
               </Field>
             </div>
+            <PaymentDetails token={token} method={payForm.method} />
             <Field label="المرجع / رقم العملية (اختياري)">
               <Input value={payForm.reference} onChange={(e) => setPayForm((p) => ({ ...p, reference: e.target.value }))} />
             </Field>
