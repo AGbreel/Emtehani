@@ -5,7 +5,7 @@ import {
 import {
   Alert, Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, Select, Skeleton, StatCard, Textarea, cn,
 } from '../components/ui';
-import { request } from '../lib/api';
+import { assetUrl, request } from '../lib/api';
 import ImageUploader from '../components/ImageUploader';
 import PaymentDetails, { methodOptions, usePaymentMethods } from '../components/PaymentDetails';
 import { methodLabel } from '../lib/paymentMethods';
@@ -36,6 +36,7 @@ export default function StudentFinancePage({ token }) {
   const [tab, setTab] = useState('ledger');
   const [requests, setRequests] = useState([]);
   const [courseRequests, setCourseRequests] = useState([]);
+  const [packageRequests, setPackageRequests] = useState([]);
   const [groups, setGroups] = useState([]);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(emptyRequest);
@@ -62,15 +63,17 @@ export default function StudentFinancePage({ token }) {
     setLoading(true);
     setError('');
     try {
-      const [result, requestData, groupData, courseData] = await Promise.all([
+      const [result, requestData, groupData, courseData, packageData] = await Promise.all([
         request('/api/teaching/my/finance', { token }),
         request('/api/teaching/my/payment-requests', { token }),
         request('/api/teaching/my/groups', { token }),
         request('/api/teaching/my/course-requests', { token }).catch(() => ({ items: [] })),
+        request('/api/teaching/my/package-requests', { token }).catch(() => ({ items: [] })),
       ]);
       setData(result);
       setRequests(requestData?.items || []);
       setCourseRequests(courseData?.items || []);
+      setPackageRequests(packageData?.items || []);
       setGroups((groupData?.items || []).filter((row) => (row.status || 'Active') === 'Active'));
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   }, [token]);
@@ -257,7 +260,7 @@ export default function StudentFinancePage({ token }) {
                       {row.notes ? <p className="mt-0.5 text-[11px] text-subtle">{row.notes}</p> : null}
                       {row.reviewNote ? <p className="mt-1 text-[11px] font-bold text-ink">ملاحظة المدرس: {row.reviewNote}</p> : null}
                       {row.status === 'Approved' && row.receiptNumber ? <p className="mt-1 font-mono text-[10.5px] text-emerald">إيصال: {row.receiptNumber}</p> : null}
-                      {row.receiptUrl ? <a href={row.receiptUrl} target="_blank" rel="noreferrer" className="mt-1 inline-flex text-[11px] font-bold text-primary underline">عرض صورة التحويل</a> : null}
+                      {row.receiptUrl ? <a href={assetUrl(row.receiptUrl)} target="_blank" rel="noreferrer" className="mt-1 inline-flex text-[11px] font-bold text-primary underline">عرض صورة التحويل</a> : null}
                     </div>
                   </div>
                 </Card>
@@ -290,7 +293,41 @@ export default function StudentFinancePage({ token }) {
                       <p className="mt-0.5 text-[11px] text-muted">{methodLabel(row.method)} · {formatDate(row.createdAtUtc)}</p>
                       {row.notes ? <p className="mt-0.5 text-[11px] text-subtle">{row.notes}</p> : null}
                       {row.reviewNote ? <p className="mt-1 text-[11px] font-bold text-ink">ملاحظة المدرس: {row.reviewNote}</p> : null}
-                      {row.receiptUrl ? <a href={row.receiptUrl} target="_blank" rel="noreferrer" className="mt-1 inline-flex text-[11px] font-bold text-primary underline">عرض صورة التحويل</a> : null}
+                      {row.receiptUrl ? <a href={assetUrl(row.receiptUrl)} target="_blank" rel="noreferrer" className="mt-1 inline-flex text-[11px] font-bold text-primary underline">عرض صورة التحويل</a> : null}
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          <Card className="flex flex-wrap items-center justify-between gap-2 p-4">
+            <div className="min-w-0">
+              <h3 className="font-display text-[15px] font-semibold text-ink">طلبات اشتراك الباقات</h3>
+              <p className="mt-0.5 text-[11.5px] text-muted">طلبات اشتراكك في باقات المدرسين مع إثبات التحويل وحالتها.</p>
+            </div>
+          </Card>
+          {packageRequests.length === 0 ? (
+            <Card><EmptyState icon={Layers} title="لا توجد طلبات باقات" description="افتح صفحة «الباقات» واختر باقة ثم أرسل صورة التحويل لمعلمك." /></Card>
+          ) : (
+            <div className="grid gap-2">
+              {packageRequests.map((row) => (
+                <Card key={row.id} className="p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge tone={row.status === 'Approved' ? 'success' : row.status === 'Rejected' ? 'danger' : 'warning'}>
+                          {row.status === 'Approved' ? 'مؤكد' : row.status === 'Rejected' ? 'مرفوض' : 'بانتظار تأكيد المدرس'}
+                        </Badge>
+                        <Badge tone="blue">{row.packageName || 'باقة'}</Badge>
+                        <span className="text-[10.5px] text-muted">{row.teacherName || 'معلم'}</span>
+                      </div>
+                      <p className="mt-1.5 text-[13px] font-bold text-ink">{money(row.amount)}</p>
+                      <p className="mt-0.5 text-[11px] text-muted">{methodLabel(row.method)} · {formatDate(row.createdAtUtc)}</p>
+                      {row.reference ? <p className="mt-0.5 text-[11px] text-muted">مرجع التحويل: <span dir="ltr" className="font-bold text-ink">{row.reference}</span></p> : null}
+                      {row.notes ? <p className="mt-0.5 text-[11px] text-subtle">{row.notes}</p> : null}
+                      {row.reviewNote ? <p className="mt-1 text-[11px] font-bold text-ink">ملاحظة المدرس: {row.reviewNote}</p> : null}
+                      {row.receiptUrl ? <a href={assetUrl(row.receiptUrl)} target="_blank" rel="noreferrer" className="mt-1 inline-flex text-[11px] font-bold text-primary underline">عرض صورة التحويل</a> : null}
                     </div>
                   </div>
                 </Card>

@@ -6,10 +6,13 @@ import {
   Users, Wallet, XCircle,
 } from 'lucide-react';
 import {
-  Alert, Badge, Button, Card, EmptyState, Input, Modal, Segmented, Select, Skeleton, cn,
+  Alert, Badge, Button, Card, EmptyState, Field, Input, Modal, Segmented, Select, Skeleton, Textarea, cn,
 } from '../components/ui';
+import ImageUploader from '../components/ImageUploader';
+import PaymentDetails, { methodOptions, usePaymentMethods } from '../components/PaymentDetails';
 import { assetUrl, request } from '../lib/api';
 import { formatNumber, formatShortDate } from '../lib/format';
+import { methodLabel } from '../lib/paymentMethods';
 import './StudentPackagesPage.css';
 
 const kindLabels = { Course: 'باقة كورسات', Group: 'باقة مجموعات', Bundle: 'باقة شاملة', Sessions: 'باقة حصص' };
@@ -51,6 +54,7 @@ function TeacherAvatar({ name = '', url = '', className = '' }) {
 function StatusRibbon({ pkg }) {
   if (pkg.isEnrolled) return <span className="pkg-ribbon pkg-ribbon--active"><CheckCircle2 size={12} /> مشترك</span>;
   if (pkg.myStatus === 'Pending') return <span className="pkg-ribbon pkg-ribbon--pending"><Clock3 size={12} /> قيد المراجعة</span>;
+  if (pkg.myStatus === 'Rejected') return <span className="pkg-ribbon pkg-ribbon--danger"><XCircle size={12} /> مرفوض</span>;
   if (pkg.isExpired) return <span className="pkg-ribbon pkg-ribbon--danger"><XCircle size={12} /> انتهت</span>;
   if (pkg.myStatus === 'Cancelled') return <span className="pkg-ribbon pkg-ribbon--muted">ملغية</span>;
   if (pkg.isFull) return <span className="pkg-ribbon pkg-ribbon--muted">اكتمل العدد</span>;
@@ -71,7 +75,17 @@ function PackageNote({ pkg }) {
     );
   }
   if (pkg.myStatus === 'Pending') {
-    return <div className="pkg-note pkg-note--warning"><Clock3 size={14} className="mt-0.5 shrink-0" /><span>طلب اشتراكك قيد مراجعة المدرس.</span></div>;
+    return <div className="pkg-note pkg-note--warning"><Clock3 size={14} className="mt-0.5 shrink-0" /><span>تم إرسال طلبك مع إثبات التحويل — بانتظار مراجعة المدرس.</span></div>;
+  }
+  if (pkg.myStatus === 'Rejected') {
+    return (
+      <div className="pkg-note pkg-note--danger">
+        <XCircle size={14} className="mt-0.5 shrink-0" />
+        <span>
+          تم رفض طلب اشتراكك{pkg.myRequest?.reviewNote ? `: ${pkg.myRequest.reviewNote}` : '.'} راجع بيانات التحويل ثم أعد إرسال الطلب.
+        </span>
+      </div>
+    );
   }
   if (pkg.isExpired) {
     return <div className="pkg-note pkg-note--danger"><XCircle size={14} className="mt-0.5 shrink-0" /><span>انتهى وصولك لهذه الباقة — تواصل مع المدرس للتجديد.</span></div>;
@@ -82,7 +96,118 @@ function PackageNote({ pkg }) {
   if (pkg.isFull) {
     return <div className="pkg-note pkg-note--warning"><Users size={14} className="mt-0.5 shrink-0" /><span>اكتمل العدد المتاح لهذه الباقة. تواصل مع المدرس للانتظار.</span></div>;
   }
-  return <div className="pkg-note"><Wallet size={14} className="mt-0.5 shrink-0" /><span>الاشتراك يتم بالتنسيق مع المدرس بعد تأكيد الدفع.</span></div>;
+  return <div className="pkg-note"><Wallet size={14} className="mt-0.5 shrink-0" /><span>حوّل قيمة الباقة ثم ارفع صورة التحويل — يعتمد المدرس اشتراكك بعد المراجعة.</span></div>;
+}
+
+function PackageSubscribeModal({ pkg, token, onClose, onSubmitted }) {
+  const { items } = usePaymentMethods(token, pkg.teacherId);
+  const options = useMemo(() => methodOptions(items), [items]);
+  const [form, setForm] = useState(() => ({
+    amount: pkg.myRequest?.amount ? String(pkg.myRequest.amount) : String(pkg.price || ''),
+    method: pkg.myRequest?.method || 'InstaPay',
+    reference: '',
+    notes: '',
+    receiptUrl: '',
+  }));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const method = options.some((option) => option.value === form.method)
+    ? form.method
+    : options[0]?.value || 'InstaPay';
+  const needsReceipt = method !== 'Cash';
+
+  async function submit() {
+    setError('');
+    if (!(Number(form.amount) > 0)) return setError('اكتب المبلغ الذي قمت بتحويله.');
+    if (needsReceipt && !form.receiptUrl) return setError('أرفق صورة سكرين التحويل أو الإيصال.');
+    setBusy(true);
+    try {
+      await request('/api/teaching/my/package-requests', {
+        token, method: 'POST',
+        body: JSON.stringify({
+          packageId: pkg.id,
+          amount: Number(form.amount),
+          method,
+          reference: form.reference || null,
+          notes: form.notes || null,
+          receiptUrl: form.receiptUrl || null,
+        }),
+      });
+      onSubmitted();
+    } catch (err) {
+      setError(err.message || 'تعذر إرسال الطلب. حاول مرة أخرى.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      icon={Wallet}
+      title={`اشترك في «${pkg.name}»`}
+      description="حوّل قيمة الباقة على بيانات المدرس ثم ارفع صورة التحويل، وسيراجعها المدرس ويقبل أو يرفض الاشتراك."
+      footer={(
+        <>
+          <Button variant="ghost" onClick={onClose}>إلغاء</Button>
+          <Button icon={Wallet} loading={busy} onClick={submit}>إرسال طلب الاشتراك</Button>
+        </>
+      )}
+    >
+      <div className="grid gap-4">
+        {error ? <Alert tone="danger">{error}</Alert> : null}
+
+        <div className="rounded-xl border border-line bg-surface-soft p-3">
+          <p className="text-[11px] text-muted">قيمة الباقة</p>
+          <p className="mt-0.5 text-[17px] font-extrabold text-primary">{formatNumber(pkg.price)} ج.م</p>
+          <p className="mt-1 text-[10.5px] text-subtle">الاشتراك لمدة {formatNumber(pkg.durationDays)} يوم من تأكيد المدرس.</p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="المبلغ المحوّل (ج.م)">
+            <Input
+              type="number"
+              min="0"
+              value={form.amount}
+              onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))}
+            />
+          </Field>
+          <Field label="طريقة الدفع">
+            <Select value={method} onChange={(event) => setForm((prev) => ({ ...prev, method: event.target.value }))}>
+              {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </Select>
+          </Field>
+        </div>
+
+        <PaymentDetails token={token} method={method} teacherId={pkg.teacherId} teacherName={pkg.teacherName} />
+
+        <Field label="المرجع / رقم العملية (اختياري)">
+          <Input
+            value={form.reference}
+            onChange={(event) => setForm((prev) => ({ ...prev, reference: event.target.value }))}
+          />
+        </Field>
+
+        <ImageUploader
+          token={token}
+          value={form.receiptUrl}
+          onChange={(url) => setForm((prev) => ({ ...prev, receiptUrl: url }))}
+          label={method === 'Cash' ? 'صورة الإيصال (اختياري)' : 'صورة التحويل (مطلوبة)'}
+          hint={method === 'Cash' ? 'اختياري للدفع النقدي.' : 'ارفع لقطة شاشة التحويل ليتمكن المدرس من مراجعتها.'}
+        />
+
+        <Field label="ملاحظات (اختياري)">
+          <Textarea
+            value={form.notes}
+            onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
+            className="min-h-16"
+          />
+        </Field>
+      </div>
+    </Modal>
+  );
 }
 
 function AvailabilityLine({ pkg }) {
@@ -102,6 +227,8 @@ export default function StudentPackagesPage({ token, onNavigate, onOpenTeachers 
   const [filter, setFilter] = useState('all');
   const [teacherId, setTeacherId] = useState('');
   const [selectedId, setSelectedId] = useState('');
+  const [subscribeFor, setSubscribeFor] = useState(null);
+  const [notice, setNotice] = useState('');
 
   const load = useCallback(async (background = false) => {
     if (background) setRefreshing(true); else setLoading(true);
@@ -148,6 +275,18 @@ export default function StudentPackagesPage({ token, onNavigate, onOpenTeachers 
     onNavigate?.('chat');
   }
 
+  function openSubscribe(pkg) {
+    setSelectedId('');
+    setSubscribeFor(pkg);
+  }
+
+  function handleSubmitted() {
+    setSubscribeFor(null);
+    setNotice('تم إرسال طلب الاشتراك مع إثبات التحويل. سيصلك إشعار عندما يراجع المدرس الطلب.');
+    window.setTimeout(() => setNotice(''), 4200);
+    load(true);
+  }
+
   function openEnrolledContent(pkg) {
     const hasGroup = (pkg.items || []).some((item) => item.type === 'Group');
     const hasCourse = (pkg.items || []).some((item) => item.type === 'Course');
@@ -165,9 +304,10 @@ export default function StudentPackagesPage({ token, onNavigate, onOpenTeachers 
     if (pkg.isFull) {
       return <Button size="sm" variant="secondary" className={width} icon={Users} disabled>اكتمل العدد</Button>;
     }
+    const rejected = pkg.myStatus === 'Rejected';
     return (
-      <Button size="sm" className={width} icon={MessageCircle} onClick={() => contactTeacher(pkg)}>
-        {pkg.isExpired ? 'جدد الاشتراك مع المدرس' : 'تواصل للاشتراك'}
+      <Button size="sm" className={width} icon={rejected ? RefreshCw : Wallet} onClick={() => openSubscribe(pkg)}>
+        {rejected ? 'أعد إرسال الطلب' : pkg.isExpired ? 'جدّد الاشتراك' : 'اشترك الآن'}
       </Button>
     );
   }
@@ -253,6 +393,7 @@ export default function StudentPackagesPage({ token, onNavigate, onOpenTeachers 
       </motion.section>
 
       {error ? <Alert tone="danger" className="mt-4" onClose={() => setError('')}>{error}</Alert> : null}
+      {notice ? <Alert tone="success" className="mt-4" onClose={() => setNotice('')}>{notice}</Alert> : null}
 
       {!loading && packages.length === 0 ? (
         <Card className="mt-4">
@@ -420,7 +561,7 @@ export default function StudentPackagesPage({ token, onNavigate, onOpenTeachers 
         description={selected ? `${selected.teacherName || 'مدرس'} · ${kindLabels[selected.kind] || 'باقة تعليمية'}` : ''}
         footer={selected ? (
           <>
-            <Button variant="ghost" onClick={() => setSelectedId('')}>إغلاق</Button>
+            <Button variant="ghost" icon={MessageCircle} onClick={() => contactTeacher(selected)}>تواصل مع المدرس</Button>
             {primaryAction(selected, true)}
           </>
         ) : null}
@@ -508,10 +649,49 @@ export default function StudentPackagesPage({ token, onNavigate, onOpenTeachers 
               </div>
             ) : null}
 
+            {selected.myRequest && !selected.isEnrolled ? (
+              <div className={cn(
+                'rounded-[14px] border p-3.5',
+                selected.myRequest.status === 'Rejected'
+                  ? 'border-danger/30 bg-danger-soft'
+                  : 'border-warning/30 bg-warning-soft',
+              )}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={selected.myRequest.status === 'Rejected' ? 'danger' : 'warning'}>
+                    {selected.myRequest.status === 'Rejected' ? 'طلب مرفوض' : 'بانتظار مراجعة المدرس'}
+                  </Badge>
+                  <span className="text-[11px] text-muted">
+                    {formatNumber(selected.myRequest.amount)} ج.م · {methodLabel(selected.myRequest.method)}
+                  </span>
+                </div>
+                {selected.myRequest.reference ? (
+                  <p className="mt-1.5 text-[11px] text-muted">مرجع التحويل: <span dir="ltr" className="font-bold text-ink">{selected.myRequest.reference}</span></p>
+                ) : null}
+                {selected.myRequest.reviewNote ? (
+                  <p className="mt-1.5 text-[11.5px] font-bold text-ink">ملاحظة المدرس: {selected.myRequest.reviewNote}</p>
+                ) : null}
+                {selected.myRequest.receiptUrl ? (
+                  <a href={assetUrl(selected.myRequest.receiptUrl)} target="_blank" rel="noreferrer" className="mt-1.5 inline-flex text-[11px] font-bold text-primary underline">
+                    عرض صورة التحويل
+                  </a>
+                ) : null}
+              </div>
+            ) : null}
+
             <PackageNote pkg={selected} />
           </div>
         ) : null}
       </Modal>
+
+      {subscribeFor ? (
+        <PackageSubscribeModal
+          key={subscribeFor.id}
+          pkg={subscribeFor}
+          token={token}
+          onClose={() => setSubscribeFor(null)}
+          onSubmitted={handleSubmitted}
+        />
+      ) : null}
     </div>
   );
 }
