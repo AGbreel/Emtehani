@@ -1,6 +1,7 @@
+/* No isolation here: it would trap the details modal's z-index below the
+   fixed mobile nav, hiding the sheet behind the tab bar. */
 .pkg-page {
   position: relative;
-  isolation: isolate;
 }
 
 /* ---------------------------------------------------------------- hero */
