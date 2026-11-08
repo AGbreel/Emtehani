@@ -12,6 +12,7 @@ import {
   FileText,
   GraduationCap,
   Hourglass,
+  Package,
   Radio,
   RefreshCw,
   Save,
@@ -38,7 +39,7 @@ import { request } from '../lib/api';
 import { EDUCATION_STAGES, gradesForStage, isValidEducation } from '../lib/education';
 import { formatDate, formatNumber, percent, scoreText } from '../lib/format';
 
-export default function StudentDashboard({ token, user, onBrowse, onExplore, onEnter, onViewResults, onOpenReview, onProfileUpdated }) {
+export default function StudentDashboard({ token, user, onBrowse, onExplore, onPackages, onEnter, onViewResults, onOpenReview, onProfileUpdated }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -152,6 +153,7 @@ export default function StudentDashboard({ token, user, onBrowse, onExplore, onE
           <>
             <Button variant="secondary" size="sm" icon={RefreshCw} loading={availableRefreshing || refreshing} onClick={refreshAll}>تحديث</Button>
             <Button variant="secondary" size="sm" icon={Compass} onClick={onExplore}>الكورسات والمجموعات</Button>
+            {onPackages ? <Button variant="secondary" size="sm" icon={Package} onClick={onPackages}>الباقات</Button> : null}
             <Button size="sm" icon={BookOpenCheck} onClick={onBrowse}>كل الامتحانات المتاحة</Button>
           </>
         }

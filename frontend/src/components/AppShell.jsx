@@ -21,6 +21,7 @@ import {
   Menu,
   MessageCircle,
   Moon,
+  Package,
   PlusCircle,
   ShieldCheck,
   Sun,
@@ -58,6 +59,7 @@ const teacherNav = [
 const studentNav = [
   { key: 'dashboard', label: 'نظرة عامة', shortLabel: 'الرئيسية', icon: LayoutDashboard },
   { key: 'explore', label: 'استكشف الكورسات والمجموعات', shortLabel: 'استكشف', icon: Compass },
+  { key: 'packages', label: 'الباقات', shortLabel: 'الباقات', icon: Package },
   { key: 'chat', label: 'المحادثات', shortLabel: 'المحادثات', icon: MessageCircle },
   { key: 'learning', label: 'مجموعاتي', shortLabel: 'مجموعاتي', icon: BookOpenCheck },
   { key: 'courses', label: 'كورساتي', shortLabel: 'كورساتي', icon: BookOpen },
@@ -105,6 +107,7 @@ const pageMeta = {
   reports: { title: 'التقارير', eyebrow: 'تحليلات وتصدير' },
   announcements: { title: 'الإعلانات', eyebrow: 'التواصل العام' },
   explore: { title: 'استكشف الكورسات والمجموعات', eyebrow: 'محتوى مدرسيك' },
+  packages: { title: 'الباقات', eyebrow: 'عروض مدرسيك' },
   learning: { title: 'مجموعاتي', eyebrow: 'رحلتك التعليمية' },
   'my-finance': { title: 'مدفوعاتي', eyebrow: 'الحساب المالي' },
   plans: { title: 'خطط الاشتراك', eyebrow: 'اشتراكات المدرسين' },
@@ -230,8 +233,8 @@ export default function AppShell({ user, page, activePage, title, subtitle, chil
         ? assistantNav
         : studentNav;
   const meta = pageMeta[page] || pageMeta.dashboard;
-  // Students get a fifth slot so discovery, chat and their learning pages all stay one tap away.
-  const visibleNav = nav.slice(0, user?.role === 'Student' ? 5 : 4);
+  // Students get a sixth slot so discovery, packages, chat and their learning pages all stay one tap away.
+  const visibleNav = nav.slice(0, user?.role === 'Student' ? 6 : 4);
   useFocusTrap(mobileOpen, mobileNavRef, () => setMobileOpen(false));
 
   const loadUnread = useCallback(async () => {

@@ -40,6 +40,7 @@ const AnnouncementsPage = lazy(() => import('./pages/AnnouncementsPage'));
 const StudentLearningPage = lazy(() => import('./pages/StudentLearningPage'));
 const StudentFinancePage = lazy(() => import('./pages/StudentFinancePage'));
 const StudentExplorePage = lazy(() => import('./pages/StudentExplorePage'));
+const StudentPackagesPage = lazy(() => import('./pages/StudentPackagesPage'));
 const MyCoursesPage = lazy(() => import('./pages/MyCoursesPage'));
 const AssistantDashboard = lazy(() => import('./pages/AssistantDashboard'));
 const AdminPlansPage = lazy(() => import('./pages/AdminPlansPage'));
@@ -75,6 +76,7 @@ const teacherTitles = {
 const studentTitles = {
   dashboard: 'نظرة عامة',
   explore: 'استكشف',
+  packages: 'الباقات',
   learning: 'مجموعاتي',
   courses: 'كورساتي',
   available: 'الامتحانات المتاحة',
@@ -116,7 +118,7 @@ const activePages = {
 
 const restorablePages = {
   Teacher: new Set(['dashboard', 'exams', 'results', 'essays', 'requests', 'students', 'courses', 'groups', 'finance', 'assistants', 'announcements', 'reports', 'teacher-profile', 'subscription', 'audit', 'chat']),
-  Student: new Set(['dashboard', 'explore', 'learning', 'courses', 'available', 'results', 'teachers', 'profile', 'my-finance', 'announcements', 'chat']),
+  Student: new Set(['dashboard', 'explore', 'packages', 'learning', 'courses', 'available', 'results', 'teachers', 'profile', 'my-finance', 'announcements', 'chat']),
   Admin: new Set(['dashboard', 'admin', 'admin-teachers', 'plans', 'admin-reports', 'admin-portfolio', 'announcements', 'chat']),
   Assistant: new Set(['dashboard', 'courses', 'groups', 'reports', 'announcements', 'chat']),
 };
@@ -136,6 +138,7 @@ const pageHashes = {
   reports: '/reports',
   learning: '/learning',
   explore: '/explore',
+  packages: '/packages',
   'my-finance': '/my-finance',
   plans: '/plans',
   admin: '/admin',
@@ -411,7 +414,7 @@ export default function App() {
     }
     if (['admin', 'admin-teachers', 'plans', 'admin-reports', 'admin-portfolio'].includes(next) && user?.role !== 'Admin') { setPage('dashboard'); return; }
     if (['finance', 'assistants', 'students', 'subscription', 'essays', 'requests', 'teacher-profile'].includes(next) && user?.role !== 'Teacher') { setPage('dashboard'); return; }
-    if (['learning', 'explore', 'my-finance', 'available', 'profile'].includes(next) && user?.role !== 'Student') { setPage('dashboard'); return; }
+    if (['learning', 'explore', 'packages', 'my-finance', 'available', 'profile'].includes(next) && user?.role !== 'Student') { setPage('dashboard'); return; }
     if (next === 'exam-detail' && !selectedExam) { setPage('exams'); return; }
     if (next === 'lobby' && !joined) { setPage('dashboard'); return; }
     if (next === 'take' && !paper) { setPage('dashboard'); return; }
@@ -599,9 +602,11 @@ export default function App() {
       ? <AssistantDashboard token={token} user={user} onNavigate={navigate} />
       : isTeacher
         ? <TeacherDashboard token={token} user={user} onNavigate={navigate} onCreate={() => setPage('create')} onOpenExam={openExam} />
-        : <StudentDashboard token={token} user={user} onBrowse={() => setPage('available')} onExplore={() => setPage('explore')} onEnter={joinedExam} onViewResults={() => setPage('results')} onOpenReview={(id) => openReview(id, 'dashboard')} onProfileUpdated={updateEducation} />;
+        : <StudentDashboard token={token} user={user} onBrowse={() => setPage('available')} onExplore={() => setPage('explore')} onPackages={() => setPage('packages')} onEnter={joinedExam} onViewResults={() => setPage('results')} onOpenReview={(id) => openReview(id, 'dashboard')} onProfileUpdated={updateEducation} />;
   } else if (page === 'explore' && isStudent) {
     content = <StudentExplorePage token={token} onOpenTeachers={() => setPage('teachers')} />;
+  } else if (page === 'packages' && isStudent) {
+    content = <StudentPackagesPage token={token} onNavigate={navigate} onOpenTeachers={() => setPage('teachers')} />;
   } else if (page === 'courses') {
     content = isStudent
       ? <MyCoursesPage token={token} user={user} onExplore={() => setPage('explore')} />
@@ -655,7 +660,7 @@ export default function App() {
       ? <AssistantDashboard token={token} user={user} onNavigate={navigate} />
       : isTeacher
         ? <TeacherDashboard token={token} user={user} onNavigate={navigate} onCreate={() => setPage('create')} onOpenExam={openExam} />
-        : <StudentDashboard token={token} user={user} onBrowse={() => setPage('available')} onEnter={joinedExam} onViewResults={() => setPage('results')} onOpenReview={(id) => openReview(id, 'dashboard')} onProfileUpdated={updateEducation} />;
+        : <StudentDashboard token={token} user={user} onBrowse={() => setPage('available')} onExplore={() => setPage('explore')} onPackages={() => setPage('packages')} onEnter={joinedExam} onViewResults={() => setPage('results')} onOpenReview={(id) => openReview(id, 'dashboard')} onProfileUpdated={updateEducation} />;
   }
 
   return (
