@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  BadgeCheck, Ban, Banknote, Building2, CheckCircle2, Crown, Landmark, Pencil, Plus, RefreshCw, Save,
-  Search, ShieldCheck, Smartphone, Users, Wallet, XCircle,
+  BadgeCheck, Ban, CheckCircle2, Crown, Pencil, Plus, RefreshCw,
+  Search, ShieldCheck, Users, Wallet, XCircle,
 } from 'lucide-react';
 import {
   Alert, Badge, Button, Card, EmptyState, Field, IconButton, Input, Modal,
   PageHeader, Select, Skeleton, StatCard, Textarea, cn,
 } from '../components/ui';
+import PaymentMethodsEditor from '../components/PaymentMethodsEditor';
 import { request } from '../lib/api';
 import { formatDate, formatNumber } from '../lib/format';
 
@@ -18,14 +19,6 @@ const tabs = [
   { value: 'payments', label: 'مدفوعات المنصة' },
   { value: 'payment-info', label: 'بيانات الدفع' },
 ];
-
-const paymentMeta = {
-  InstaPay: { icon: Smartphone, placeholder: '010xxxxxxxx أو عنوان إنستا باي' },
-  VodafoneCash: { icon: Banknote, placeholder: '010xxxxxxxx' },
-  BankTransfer: { icon: Landmark, placeholder: 'IBAN أو رقم الحساب' },
-  Cash: { icon: Building2, placeholder: 'مكان التسليم (اختياري)' },
-  Online: { icon: Wallet, placeholder: 'رابط الدفع (اختياري)' },
-};
 
 const statusLabels = {
   Confirmed: 'مؤكد', Pending: 'بانتظار المراجعة', Expired: 'منتهي', Suspended: 'موقوف',
@@ -59,9 +52,6 @@ export default function AdminPlansPage({ token }) {
   const [form, setForm] = useState(emptyPlan);
   const [modalError, setModalError] = useState('');
   const [note, setNote] = useState('');
-  const [paymentMethods, setPaymentMethods] = useState([]);
-  const [paymentNote, setPaymentNote] = useState('');
-  const [paymentBusy, setPaymentBusy] = useState(false);
 
   const flash = useCallback((message) => {
     setNotice(message);
@@ -72,46 +62,16 @@ export default function AdminPlansPage({ token }) {
     setLoading(true);
     setError('');
     try {
-      const [planData, subscriptionData, paymentData, paymentSettings] = await Promise.all([
+      const [planData, subscriptionData, paymentData] = await Promise.all([
         request('/api/admin/plans', { token }),
         request('/api/admin/subscriptions', { token }),
         request('/api/admin/platform-payments', { token }),
-        request('/api/admin/payment-settings', { token }).catch(() => ({ items: [], note: '' })),
       ]);
       setPlans(planData?.items || []);
       setSubscriptions(subscriptionData?.items || []);
       setPayments(paymentData?.items || []);
-      setPaymentMethods(paymentSettings?.items || []);
-      setPaymentNote(paymentSettings?.note || '');
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   }, [token]);
-
-  function patchMethod(code, patch) {
-    setPaymentMethods((prev) => prev.map((item) => (item.code === code ? { ...item, ...patch } : item)));
-  }
-
-  async function savePaymentSettings() {
-    setPaymentBusy(true);
-    setError('');
-    try {
-      const result = await request('/api/admin/payment-settings', {
-        token, method: 'PUT',
-        body: JSON.stringify({
-          note: paymentNote || null,
-          methods: paymentMethods.map((item) => ({
-            code: item.code,
-            number: item.number || null,
-            accountName: item.accountName || null,
-            note: item.note || null,
-            enabled: Boolean(item.enabled),
-          })),
-        }),
-      });
-      setPaymentMethods(result?.items || paymentMethods);
-      setPaymentNote(result?.note || '');
-      flash('تم حفظ بيانات الدفع.');
-    } catch (err) { setError(err.message); } finally { setPaymentBusy(false); }
-  }
 
   useEffect(() => { load(); }, [load]);
 
@@ -404,55 +364,18 @@ export default function AdminPlansPage({ token }) {
 
       {!loading && tab === 'payment-info' ? (
         <div className="grid gap-4">
-          <Card className="p-4 sm:p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="flex items-center gap-1.5 text-[14px] font-bold text-ink"><Wallet size={15} className="text-primary" /> أرقام الدفع الظاهرة للطلاب والمدرسين</h2>
-                <p className="mt-1 text-[11.5px] leading-6 text-muted">
-                  تظهر هذه البيانات تلقائياً عند اختيار طريقة الدفع، سواء كان اشتراك طالب مع مدرس أو اشتراك مدرس في المنصة.
-                </p>
-              </div>
-              <Button size="sm" icon={Save} loading={paymentBusy} onClick={savePaymentSettings}>حفظ البيانات</Button>
-            </div>
-            <Field label="ملاحظة عامة تظهر أسفل بيانات الدفع" className="mt-4">
-              <Textarea value={paymentNote} onChange={(e) => setPaymentNote(e.target.value)} className="min-h-16"
-                placeholder="مثال: بعد التحويل أرسل صورة الإيصال مع رقم العملية حتى تُراجع الإدارة الطلب." />
-            </Field>
-          </Card>
-          <div className="grid gap-3 md:grid-cols-2">
-            {paymentMethods.map((item) => {
-              const meta = paymentMeta[item.code] || { icon: Wallet, placeholder: '' };
-              const Icon = meta.icon;
-              return (
-                <Card key={item.code} className={cn('p-4', item.enabled && 'ring-1 ring-primary/20')}>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className={cn('grid size-9 place-items-center rounded-[11px]', item.enabled ? 'bg-primary-soft text-primary' : 'bg-surface-soft text-muted')}><Icon size={16} /></span>
-                      <div>
-                        <p className="text-[13px] font-bold text-ink">{item.label}</p>
-                        <p className="font-mono text-[10px] text-subtle" dir="ltr">{item.code}</p>
-                      </div>
-                    </div>
-                    <label className="flex items-center gap-1.5 text-[11px] font-bold text-muted">
-                      <input type="checkbox" className="accent-primary" checked={Boolean(item.enabled)} onChange={(e) => patchMethod(item.code, { enabled: e.target.checked })} />
-                      مفعّل
-                    </label>
-                  </div>
-                  <div className="mt-3 grid gap-2.5">
-                    <Field label={item.code === 'BankTransfer' ? 'IBAN / رقم الحساب' : 'الرقم / بيانات التحويل'}>
-                      <Input value={item.number || ''} onChange={(e) => patchMethod(item.code, { number: e.target.value })} dir="ltr" placeholder={meta.placeholder} />
-                    </Field>
-                    <Field label="اسم المستلم / الحساب">
-                      <Input value={item.accountName || ''} onChange={(e) => patchMethod(item.code, { accountName: e.target.value })} placeholder="مثال: منصة امتحاني" />
-                    </Field>
-                    <Field label="تعليمات إضافية (اختياري)">
-                      <Input value={item.note || ''} onChange={(e) => patchMethod(item.code, { note: e.target.value })} />
-                    </Field>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
+          <Alert tone="info">
+            هذه الأرقام تخص <strong>اشتراك المدرس في باقات المنصة</strong> فقط. تحصيل الطلاب في الكورسات والمجموعات يستخدم بيانات كل مدرس من صفحة «بيانات التحصيل» في حسابه.
+          </Alert>
+          <PaymentMethodsEditor
+            token={token}
+            endpoint="/api/admin/payment-settings"
+            title="أرقام دفع اشتراكات المنصة"
+            description="تظهر للمدرس عند تجديد باقته في المنصة. لن تظهر للطلاب عند شراء كورس أو دفع مجموعة."
+            noteLabel="ملاحظة عامة تظهر للمدرس أسفل بيانات التحويل"
+            notePlaceholder="مثال: بعد التحويل أرسل صورة الإيصال مع رقم العملية حتى تُراجع الإدارة الطلب."
+            onSaved={() => flash('تم حفظ بيانات دفع المنصة.')}
+          />
         </div>
       ) : null}
 

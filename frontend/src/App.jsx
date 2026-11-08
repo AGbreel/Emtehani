@@ -1,8 +1,9 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowRight, LoaderCircle, LogOut, Sparkles } from 'lucide-react';
+import { ArrowRight, LogOut, Sparkles } from 'lucide-react';
 import AppShell from './components/AppShell';
 import SessionCountdown from './components/SessionCountdown';
+import PlatformLoader from './components/PlatformLoader';
 import { Button, Logo } from './components/ui';
 import LandingPage from './pages/LandingPage';
 import AuthPage from './pages/AuthPage';
@@ -168,11 +169,8 @@ function storedPageFor(user) {
 
 function PageFallback() {
   return (
-    <div className="grid min-h-[38vh] place-items-center">
-      <div className="flex flex-col items-center text-center">
-        <LoaderCircle size={20} className="animate-spin text-primary" />
-        <p className="mt-2 text-[11px] text-muted">جارٍ التحميل...</p>
-      </div>
+    <div className="grid min-h-[46vh] place-items-center px-4">
+      <PlatformLoader label="جارٍ تحميل المحتوى..." />
     </div>
   );
 }
@@ -508,11 +506,7 @@ export default function App() {
   if (booting) {
     return (
       <div className="grid min-h-dvh place-items-center bg-canvas px-4">
-        <div className="flex flex-col items-center text-center">
-          <Logo />
-          <LoaderCircle size={20} className="mt-6 animate-spin text-primary" />
-          <p className="mt-2 text-[11px] text-muted">جارٍ تجهيز مساحتك...</p>
-        </div>
+        <PlatformLoader label="جارٍ تجهيز مساحتك..." />
       </div>
     );
   }

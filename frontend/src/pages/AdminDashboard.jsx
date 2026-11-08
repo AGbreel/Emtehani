@@ -17,9 +17,11 @@ import {
   ShieldCheck,
   Users,
   UserRound,
+  Wallet,
   XCircle,
 } from 'lucide-react';
-import { Alert, Avatar, Badge, Button, Card, EmptyState, Field, Input, PageHeader, Select, Skeleton, StatCard } from '../components/ui';
+import { Alert, Avatar, Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, Select, Skeleton, StatCard } from '../components/ui';
+import PaymentMethodsEditor from '../components/PaymentMethodsEditor';
 import { request } from '../lib/api';
 import { formatDate, formatNumber } from '../lib/format';
 
@@ -67,6 +69,7 @@ export default function AdminDashboard({ token, onNavigate }) {
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [featuresText, setFeaturesText] = useState('');
+  const [collectionTeacher, setCollectionTeacher] = useState(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { setDebouncedSearch(search.trim()); setPage(1); }, 300);
@@ -267,15 +270,26 @@ export default function AdminDashboard({ token, onNavigate }) {
                         {row.subscription?.confirmedAtUtc ? <span className="mt-0.5 block text-[9.5px] text-emerald">مؤكد {formatDate(row.subscription.confirmedAtUtc)}</span> : null}
                       </td>
                       <td className="px-3 py-3">
-                        <button
-                          type="button"
-                          onClick={() => openTeacherChat(row.teacherId)}
-                          className="inline-flex items-center gap-1.5 rounded-[10px] border border-line bg-surface px-2.5 py-1.5 text-[10.5px] font-bold text-muted transition hover:border-primary/40 hover:bg-primary-soft hover:text-primary"
-                          aria-label={`محادثة ${row.fullName}`}
-                        >
-                          <MessageCircle size={13} />
-                          محادثة
-                        </button>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => openTeacherChat(row.teacherId)}
+                            className="inline-flex items-center gap-1.5 rounded-[10px] border border-line bg-surface px-2.5 py-1.5 text-[10.5px] font-bold text-muted transition hover:border-primary/40 hover:bg-primary-soft hover:text-primary"
+                            aria-label={`محادثة ${row.fullName}`}
+                          >
+                            <MessageCircle size={13} />
+                            محادثة
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCollectionTeacher({ id: row.teacherId, name: row.fullName })}
+                            className="inline-flex items-center gap-1.5 rounded-[10px] border border-line bg-surface px-2.5 py-1.5 text-[10.5px] font-bold text-muted transition hover:border-emerald/40 hover:bg-emerald-soft hover:text-emerald"
+                            aria-label={`بيانات تحصيل ${row.fullName}`}
+                          >
+                            <Wallet size={13} />
+                            التحصيل
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -323,6 +337,28 @@ export default function AdminDashboard({ token, onNavigate }) {
         )}
         {settings?.note ? <p className="mt-3 rounded-[10px] bg-surface-soft p-2.5 text-[10.5px] leading-5 text-muted">{settings.note}</p> : null}
       </Card>
+
+      {collectionTeacher ? (
+        <Modal
+          open
+          onClose={() => setCollectionTeacher(null)}
+          size="xl"
+          icon={Wallet}
+          title={`بيانات تحصيل ${collectionTeacher.name}`}
+          description="هذه الأرقام تظهر لطلاب هذا المدرس فقط عند شراء كورس أو دفع مجموعة، ولا علاقة لها بأرقام اشتراك المنصة."
+          footer={<Button variant="secondary" onClick={() => setCollectionTeacher(null)}>إغلاق</Button>}
+        >
+          <PaymentMethodsEditor
+            key={collectionTeacher.id}
+            token={token}
+            endpoint={`/api/admin/teachers/${collectionTeacher.id}/payment-settings`}
+            title="أرقام تحصيل الطلاب"
+            description="يمكنك تعديل أرقام المدرس نيابة عنه. التغييرات تُطبق فوراً على شاشات الدفع الخاصة بطلابه."
+            saveLabel="حفظ بيانات المدرس"
+            onSaved={() => { setCollectionTeacher(null); setNotice('تم حفظ بيانات تحصيل المدرس.'); window.setTimeout(() => setNotice(''), 3200); }}
+          />
+        </Modal>
+      ) : null}
     </div>
   );
 }

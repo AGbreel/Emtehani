@@ -43,8 +43,14 @@ export default function StudentExplorePage({ token, onOpenTeachers }) {
   const [payForm, setPayForm] = useState({ method: 'InstaPay', amount: '', reference: '', notes: '', receiptUrl: '' });
   const [payError, setPayError] = useState('');
   const [payBusy, setPayBusy] = useState(false);
-  const paymentInfo = usePaymentMethods(token);
-  const methods = methodOptions(paymentInfo.items);
+  const coursePaymentInfo = usePaymentMethods(token, payCourse?.teacherId || null);
+  const courseMethods = methodOptions(coursePaymentInfo.items);
+
+  useEffect(() => {
+    if (!payCourse) return;
+    const allowed = courseMethods.map((item) => item.value);
+    setPayForm((prev) => (allowed.includes(prev.method) ? prev : { ...prev, method: allowed[0] || 'Cash' }));
+  }, [payCourse, coursePaymentInfo.loading, coursePaymentInfo.items]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = useCallback(async (background = false) => {
     if (background) setRefreshing(true); else setLoading(true);
@@ -148,7 +154,7 @@ export default function StudentExplorePage({ token, onOpenTeachers }) {
   function openCoursePayment(course) {
     setPayCourse(course);
     setPayForm({
-      method: methods[0]?.value || 'InstaPay',
+      method: 'InstaPay',
       amount: course?.price ? String(course.price) : '',
       reference: '', notes: '', receiptUrl: '',
     });
@@ -536,11 +542,11 @@ export default function StudentExplorePage({ token, onOpenTeachers }) {
               </Field>
               <Field label="طريقة الدفع">
                 <Select value={payForm.method} onChange={(e) => setPayForm((p) => ({ ...p, method: e.target.value }))}>
-                  {methods.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}
+                  {courseMethods.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}
                 </Select>
               </Field>
             </div>
-            <PaymentDetails token={token} method={payForm.method} />
+            <PaymentDetails token={token} method={payForm.method} teacherId={payCourse.teacherId} teacherName={payCourse.teacherName} />
             <Field label="المرجع / رقم العملية (اختياري)">
               <Input value={payForm.reference} onChange={(e) => setPayForm((p) => ({ ...p, reference: e.target.value }))} />
             </Field>

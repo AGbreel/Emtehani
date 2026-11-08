@@ -42,8 +42,16 @@ export default function StudentFinancePage({ token }) {
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
   const [notice, setNotice] = useState('');
-  const paymentInfo = usePaymentMethods(token);
+  const selectedGroup = groups.find((group) => group.id === form.groupId);
+  const selectedTeacherId = selectedGroup?.teacherId || null;
+  const paymentInfo = usePaymentMethods(token, selectedTeacherId);
   const methods = methodOptions(paymentInfo.items);
+
+  useEffect(() => {
+    if (!formOpen) return;
+    const allowed = methods.map((item) => item.value);
+    setForm((prev) => (allowed.includes(prev.method) ? prev : { ...prev, method: allowed[0] || 'Cash' }));
+  }, [formOpen, selectedTeacherId, paymentInfo.loading, paymentInfo.items]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const flash = useCallback((message) => {
     setNotice(message);
@@ -375,7 +383,7 @@ export default function StudentFinancePage({ token }) {
                 <Input value={form.reference} onChange={(e) => setForm((p) => ({ ...p, reference: e.target.value }))} />
               </Field>
             </div>
-            <PaymentDetails token={token} method={form.method} />
+            <PaymentDetails token={token} method={form.method} teacherId={selectedTeacherId} teacherName={selectedGroup?.teacherName} />
             <Field label="ملاحظات (اختياري)">
               <Textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="min-h-20" />
             </Field>

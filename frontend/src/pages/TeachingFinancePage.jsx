@@ -9,6 +9,7 @@ import {
   Alert, Badge, Button, Card, EmptyState, Field, IconButton, Input, Modal,
   PageHeader, Segmented, Select, Skeleton, StatCard, Textarea, cn,
 } from '../components/ui';
+import PaymentMethodsEditor from '../components/PaymentMethodsEditor';
 import { request } from '../lib/api';
 import { downloadBlob, formatDate, formatNumber } from '../lib/format';
 
@@ -27,6 +28,7 @@ const tabs = [
   { value: 'adjustments', label: 'التسويات' },
   { value: 'packages', label: 'الباقات' },
   { value: 'coupons', label: 'الكوبونات' },
+  { value: 'collection', label: 'بيانات التحصيل' },
 ];
 
 const chargeStates = [
@@ -925,6 +927,24 @@ export default function TeachingFinancePage({ token }) {
               </table>
             </Card>
           )}
+        </div>
+      ) : null}
+
+      {tab === 'collection' ? (
+        <div className="grid gap-4">
+          <Alert tone="info">
+            هذه الأرقام تظهر لطلابك عند شراء كورس أو دفع مجموعة، وتُحصَّل لصالحك أنت. اشتراكك في باقات المنصة يُدفع على أرقام إدارة المنصة وليس هنا.
+          </Alert>
+          <PaymentMethodsEditor
+            token={token}
+            endpoint="/api/teacher/payment-settings"
+            title="أرقام تحصيل طلابك"
+            description="فعّل الوسائل التي تقبلها واكتب أرقامك بدقة، ثم احفظ. أي وسيلة غير مفعّلة لن تظهر للطالب."
+            noteLabel="ملاحظة تظهر للطالب أسفل بيانات التحويل"
+            notePlaceholder="مثال: بعد التحويل أرسل صورة الإيصال مع رقم العملية حتى أؤكد اشتراكك."
+            saveLabel="حفظ بيانات التحصيل"
+            onSaved={() => flash('تم حفظ بيانات التحصيل وستظهر لطلابك.')}
+          />
         </div>
       ) : null}
 

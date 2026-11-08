@@ -574,6 +574,16 @@
   100% { box-shadow: 0 0 0 0 transparent; }
 }
 
+@keyframes ui-loader-run {
+  0% { transform: translateX(180%); }
+  100% { transform: translateX(-320%); }
+}
+
+@keyframes ui-bounce-dot {
+  0%, 80%, 100% { transform: translateY(0); opacity: .35; }
+  40% { transform: translateY(-4px); opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after {
