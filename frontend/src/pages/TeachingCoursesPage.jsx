@@ -84,13 +84,10 @@ function CoursePreview({ open, onClose, course }) {
       footer={<Button variant="secondary" onClick={onClose}>رجوع للتعديل</Button>}>
       <div className="py-2">
         <article className="overflow-hidden rounded-[20px] border border-line bg-surface shadow-card">
-          <div className="relative h-44 bg-gradient-to-br from-primary/25 via-primary-soft to-emerald/15 sm:h-56">
+          <div className="relative h-52 bg-gradient-to-br from-primary/25 via-primary-soft to-emerald/15 sm:h-64">
             {c.coverUrl ? <img src={assetUrl(c.coverUrl)} alt="" className="size-full object-cover" /> : (
-              <div className="grid size-full place-items-center">
-                <div className="text-center">
-                  <span className="mx-auto grid size-14 place-items-center rounded-[18px] bg-surface/80 text-primary shadow-soft backdrop-blur"><BookOpen size={26} /></span>
-                  <p className="mt-2 text-[11.5px] font-bold text-ink/70">أضف صورة غلاف ليظهر الكورس بشكل أقوى</p>
-                </div>
+              <div className="absolute inset-0 grid place-items-center pb-20">
+                <span className="grid size-14 place-items-center rounded-[18px] bg-surface/80 text-primary shadow-soft backdrop-blur"><BookOpen size={26} /></span>
               </div>
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-[rgba(3,7,18,.65)] via-transparent to-transparent" />
