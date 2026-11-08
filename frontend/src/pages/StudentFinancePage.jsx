@@ -6,6 +6,7 @@ import {
   Alert, Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, Select, Skeleton, StatCard, Textarea, cn,
 } from '../components/ui';
 import { request } from '../lib/api';
+import ImageUploader from '../components/ImageUploader';
 import { formatDate, formatNumber } from '../lib/format';
 
 const money = (value) => `${formatNumber(Number(value) || 0)} ج.م`;
@@ -26,7 +27,7 @@ const tabs = [
 const emptyRequest = () => ({
   groupId: '', amount: '', coverageType: 'Month', sessionsCount: '',
   periodMonth: new Date().getMonth() + 1, periodYear: new Date().getFullYear(),
-  method: 'Cash', reference: '', notes: '',
+  method: 'Cash', reference: '', notes: '', receiptUrl: '',
 });
 
 export default function StudentFinancePage({ token }) {
@@ -35,6 +36,7 @@ export default function StudentFinancePage({ token }) {
   const [error, setError] = useState('');
   const [tab, setTab] = useState('ledger');
   const [requests, setRequests] = useState([]);
+  const [courseRequests, setCourseRequests] = useState([]);
   const [groups, setGroups] = useState([]);
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(emptyRequest);
@@ -51,13 +53,15 @@ export default function StudentFinancePage({ token }) {
     setLoading(true);
     setError('');
     try {
-      const [result, requestData, groupData] = await Promise.all([
+      const [result, requestData, groupData, courseData] = await Promise.all([
         request('/api/teaching/my/finance', { token }),
         request('/api/teaching/my/payment-requests', { token }),
         request('/api/teaching/my/groups', { token }),
+        request('/api/teaching/my/course-requests', { token }).catch(() => ({ items: [] })),
       ]);
       setData(result);
       setRequests(requestData?.items || []);
+      setCourseRequests(courseData?.items || []);
       setGroups((groupData?.items || []).filter((row) => (row.status || 'Active') === 'Active'));
     } catch (err) { setError(err.message); } finally { setLoading(false); }
   }, [token]);
@@ -69,6 +73,7 @@ export default function StudentFinancePage({ token }) {
     if (!form.groupId) return setFormError('اختر المجموعة.');
     if (!(Number(form.amount) > 0)) return setFormError('اكتب المبلغ الذي دفعته.');
     if (form.coverageType === 'Sessions' && !(Number(form.sessionsCount) > 0)) return setFormError('حدد عدد الحصص.');
+    if (form.method !== 'Cash' && !form.receiptUrl) return setFormError('أرفق صورة سكرين التحويل أو الإيصال.');
     setBusy(true);
     try {
       await request('/api/teaching/my/payment-requests', {
@@ -83,6 +88,7 @@ export default function StudentFinancePage({ token }) {
           method: form.method,
           reference: form.reference || null,
           notes: form.notes || null,
+          receiptUrl: form.receiptUrl || null,
         }),
       });
       setFormOpen(false);
@@ -242,6 +248,40 @@ export default function StudentFinancePage({ token }) {
                       {row.notes ? <p className="mt-0.5 text-[11px] text-subtle">{row.notes}</p> : null}
                       {row.reviewNote ? <p className="mt-1 text-[11px] font-bold text-ink">ملاحظة المدرس: {row.reviewNote}</p> : null}
                       {row.status === 'Approved' && row.receiptNumber ? <p className="mt-1 font-mono text-[10.5px] text-emerald">إيصال: {row.receiptNumber}</p> : null}
+                      {row.receiptUrl ? <a href={row.receiptUrl} target="_blank" rel="noreferrer" className="mt-1 inline-flex text-[11px] font-bold text-primary underline">عرض صورة التحويل</a> : null}
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          <Card className="flex flex-wrap items-center justify-between gap-2 p-4">
+            <div className="min-w-0">
+              <h3 className="font-display text-[15px] font-semibold text-ink">طلبات اشتراك الكورسات</h3>
+              <p className="mt-0.5 text-[11.5px] text-muted">طلبات اشتراكك في الكورسات المدفوعة مع صورة التحويل وحالتها.</p>
+            </div>
+          </Card>
+          {courseRequests.length === 0 ? (
+            <Card><EmptyState icon={ClipboardCheck} title="لا توجد طلبات كورسات" description="افتح أي كورس مدفوع من «استكشف» وأرسل سكرين التحويل لمعلمك." /></Card>
+          ) : (
+            <div className="grid gap-2">
+              {courseRequests.map((row) => (
+                <Card key={row.id} className="p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge tone={row.status === 'Approved' ? 'success' : row.status === 'Rejected' ? 'danger' : 'warning'}>
+                          {row.status === 'Approved' ? 'مؤكد' : row.status === 'Rejected' ? 'مرفوض' : 'بانتظار تأكيد المدرس'}
+                        </Badge>
+                        <Badge tone="blue">{row.courseTitle || 'كورس'}</Badge>
+                        <span className="text-[10.5px] text-muted">{row.teacherName || 'معلم'}</span>
+                      </div>
+                      <p className="mt-1.5 text-[13px] font-bold text-ink">{money(row.amount)}</p>
+                      <p className="mt-0.5 text-[11px] text-muted">{methodLabels[row.method] || row.method} · {formatDate(row.createdAtUtc)}</p>
+                      {row.notes ? <p className="mt-0.5 text-[11px] text-subtle">{row.notes}</p> : null}
+                      {row.reviewNote ? <p className="mt-1 text-[11px] font-bold text-ink">ملاحظة المدرس: {row.reviewNote}</p> : null}
+                      {row.receiptUrl ? <a href={row.receiptUrl} target="_blank" rel="noreferrer" className="mt-1 inline-flex text-[11px] font-bold text-primary underline">عرض صورة التحويل</a> : null}
                     </div>
                   </div>
                 </Card>
@@ -337,6 +377,9 @@ export default function StudentFinancePage({ token }) {
             <Field label="ملاحظات (اختياري)">
               <Textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="min-h-20" />
             </Field>
+            <ImageUploader token={token} value={form.receiptUrl || ''} onChange={(url) => setForm((p) => ({ ...p, receiptUrl: url }))}
+              label={form.method === 'Cash' ? 'صورة التحويل (اختياري)' : 'صورة التحويل (مطلوبة)'}
+              hint={form.method === 'Cash' ? 'اختياري للدفع النقدي — يمكنك إرفاق إيصال إن وُجد.' : 'لازم ترفع سكرين التحويل (InstaPay / فودافون كاش / تحويل بنكي) قبل إرسال الطلب.'} />
           </div>
         </Modal>
       ) : null}

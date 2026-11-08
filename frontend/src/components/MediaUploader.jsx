@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { motion } from 'motion/react';
-import { FileText, Film, Link2, LoaderCircle, Music, RefreshCw, Trash2, UploadCloud } from 'lucide-react';
+import { FileText, Film, Image as ImageIcon, Link2, LoaderCircle, Music, RefreshCw, Trash2, UploadCloud } from 'lucide-react';
 import { API, assetUrl, getStoredAuth, refreshAccessToken } from '../lib/api';
 import { cn } from './ui';
 
@@ -39,6 +39,13 @@ const KINDS = {
     title: 'ملف مرفق',
     hint: 'PDF أو Word أو صور أو نص.',
     allowed: '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.rtf,.jpg,.jpeg,.png,.webp,.heic',
+  },
+  Image: {
+    accept: 'image/jpeg,image/png,image/webp,image/heic',
+    icon: ImageIcon,
+    title: 'صورة التحويل',
+    hint: 'JPG أو PNG أو WebP أو HEIC — صورة واضحة لسكرين التحويل أو الإيصال.',
+    allowed: '.jpg,.jpeg,.png,.webp,.heic',
   },
 };
 
@@ -187,6 +194,10 @@ export default function MediaUploader({
               <video src={assetUrl(value)} controls preload="metadata" className="max-h-44 w-full rounded-[10px] bg-black" />
             ) : kind === 'Audio' ? (
               <audio src={assetUrl(value)} controls className="w-full" />
+            ) : kind === 'Image' ? (
+              <a href={assetUrl(value)} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-[10px] border border-line bg-surface">
+                <img src={assetUrl(value)} alt={label || 'صورة التحويل'} className="max-h-52 w-full object-contain" />
+              </a>
             ) : (
               <a href={assetUrl(value)} target="_blank" rel="noreferrer" className="flex items-center gap-2 rounded-[10px] border border-line bg-surface px-3 py-2.5 text-[11.5px] font-bold text-primary">
                 <Icon size={15} className="shrink-0" />

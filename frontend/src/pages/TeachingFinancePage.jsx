@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  AlertCircle, ArrowDownCircle, ArrowUpCircle, BadgePercent, Banknote, CalendarClock,
+  AlertCircle, ArrowDownCircle, ArrowUpCircle, BadgePercent, Banknote, BookOpenCheck, CalendarClock,
   CheckCircle2, ClipboardCheck, Coins, Download, FileSpreadsheet, HandCoins, Layers, PackagePlus,
   Pencil, Plus, Receipt, RefreshCw, Search, ShieldAlert, TicketPercent, Trash2, TrendingUp,
   UserRoundSearch, Users, Wallet, XCircle,
@@ -110,6 +110,7 @@ export default function TeachingFinancePage({ token }) {
   const [chargeState, setChargeState] = useState('');
   const [payments, setPayments] = useState({ items: [], total: 0, page: 1, pageSize: 25 });
   const [paymentRequests, setPaymentRequests] = useState([]);
+  const [courseRequests, setCourseRequests] = useState([]);
   const [requestFilter, setRequestFilter] = useState('Pending');
   const [adjustments, setAdjustments] = useState([]);
   const [packages, setPackages] = useState([]);
@@ -161,8 +162,12 @@ export default function TeachingFinancePage({ token }) {
   }, [token, range.from, range.to, query]);
 
   const loadPaymentRequests = useCallback(async (status = 'Pending') => {
-    const data = await request(`/api/teaching/finance/payment-requests${query({ status })}`, { token });
+    const [data, courseData] = await Promise.all([
+      request(`/api/teaching/finance/payment-requests${query({ status })}`, { token }),
+      request(`/api/teaching/finance/course-requests${query({ status })}`, { token }).catch(() => ({ items: [] })),
+    ]);
     setPaymentRequests(data?.items || []);
+    setCourseRequests(courseData?.items || []);
   }, [token, query]);
 
   const loadAdjustments = useCallback(async () => {
@@ -298,6 +303,19 @@ export default function TeachingFinancePage({ token }) {
       });
       flash(approve ? 'تم تأكيد الدفعة وإشعار الطالب.' : 'تم رفض الطلب وإشعار الطالب.');
       await Promise.all([loadPaymentRequests(requestFilter), loadPayments(1), loadOverview()]);
+    } catch (err) { setError(err.message); } finally { setBusy(''); }
+  }
+
+  async function reviewCourseRequest(requestId, approve) {
+    const note = window.prompt(approve ? 'ملاحظة على القبول (اختياري):' : 'سبب رفض الطلب:');
+    if (note === null) return;
+    setBusy(`course-request-${requestId}`);
+    try {
+      await request(`/api/teaching/finance/course-requests/${requestId}/${approve ? 'approve' : 'reject'}`, {
+        token, method: 'POST', body: JSON.stringify({ note: note.trim() || null }),
+      });
+      flash(approve ? 'تم تأكيد الاشتراك وفتح الكورس للطالب.' : 'تم رفض الطلب وإشعار الطالب.');
+      await loadPaymentRequests(requestFilter);
     } catch (err) { setError(err.message); } finally { setBusy(''); }
   }
 
@@ -701,6 +719,7 @@ export default function TeachingFinancePage({ token }) {
       ) : null}
 
       {tab === 'requests' ? (
+        <div className="grid gap-4">
         <Card className="overflow-hidden">
           <div className="flex flex-wrap items-center gap-2 border-b border-line/70 p-4">
             <h3 className="me-auto font-display text-[15px] font-semibold text-ink">طلبات دفع المجموعات</h3>
@@ -736,6 +755,7 @@ export default function TeachingFinancePage({ token }) {
                       {item.notes ? ` · ${item.notes}` : ''}
                       {item.reviewNote ? ` · ملاحظة المدرس: ${item.reviewNote}` : ''}
                     </p>
+                    {item.receiptUrl ? <a href={item.receiptUrl} target="_blank" rel="noreferrer" className="mt-1 inline-flex text-[11px] font-bold text-primary underline">عرض صورة التحويل</a> : null}
                   </div>
                   {item.status === 'Pending' ? (
                     <div className="flex gap-1.5">
@@ -748,6 +768,48 @@ export default function TeachingFinancePage({ token }) {
             </div>
           )}
         </Card>
+
+        <Card className="overflow-hidden">
+          <div className="flex flex-wrap items-center gap-2 border-b border-line/70 p-4">
+            <h3 className="me-auto font-display text-[15px] font-semibold text-ink">طلبات اشتراك الكورسات</h3>
+            <Button variant="soft" size="sm" icon={RefreshCw} onClick={() => loadPaymentRequests(requestFilter)}>تحديث</Button>
+          </div>
+          {courseRequests.length === 0 ? (
+            <EmptyState icon={BookOpenCheck} title="لا توجد طلبات كورسات" description="حين يرسل الطالب سكرين تحويل لاشتراك كورس مدفوع سيظهر هنا." />
+          ) : (
+            <div className="grid gap-2 p-4">
+              {courseRequests.map((item) => (
+                <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface-soft p-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <p className="text-[12.5px] font-bold text-ink">{item.studentName || 'طالب'}</p>
+                      <Badge tone={item.status === 'Approved' ? 'success' : item.status === 'Rejected' ? 'danger' : 'warning'}>
+                        {item.status === 'Approved' ? 'مقبول' : item.status === 'Rejected' ? 'مرفوض' : 'قيد المراجعة'}
+                      </Badge>
+                      <Badge tone="blue">{item.courseTitle || 'كورس'}</Badge>
+                      {item.studentCode ? <span className="text-[10.5px] text-muted">{item.studentCode}</span> : null}
+                    </div>
+                    <p className="mt-1 text-[11.5px] text-muted">{money(item.amount)} · {methodLabels[item.method] || item.method}</p>
+                    <p className="mt-0.5 text-[10.5px] text-subtle">
+                      {formatDate(item.createdAtUtc)}
+                      {item.reference ? ` · مرجع: ${item.reference}` : ''}
+                      {item.notes ? ` · ${item.notes}` : ''}
+                      {item.reviewNote ? ` · ملاحظة المدرس: ${item.reviewNote}` : ''}
+                    </p>
+                    {item.receiptUrl ? <a href={item.receiptUrl} target="_blank" rel="noreferrer" className="mt-1 inline-flex text-[11px] font-bold text-primary underline">عرض صورة التحويل</a> : null}
+                  </div>
+                  {item.status === 'Pending' ? (
+                    <div className="flex gap-1.5">
+                      <Button size="xs" icon={CheckCircle2} loading={busy === `course-request-${item.id}`} onClick={() => reviewCourseRequest(item.id, true)}>تأكيد الاشتراك</Button>
+                      <Button size="xs" variant="ghost" onClick={() => reviewCourseRequest(item.id, false)}>رفض</Button>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+        </div>
       ) : null}
 
       {tab === 'adjustments' ? (

@@ -4,8 +4,9 @@ import {
   Layers, Lock, MapPin, Play, RefreshCw, Search, Sparkles, Users, Video, Wallet, XCircle,
 } from 'lucide-react';
 import {
-  Alert, Badge, Button, Card, EmptyState, Input, Modal, PageHeader, Segmented, Skeleton, cn,
+  Alert, Badge, Button, Card, EmptyState, Field, Input, Modal, PageHeader, Segmented, Select, Skeleton, Textarea, cn,
 } from '../components/ui';
+import ImageUploader from '../components/ImageUploader';
 import { assetUrl, request } from '../lib/api';
 import { formatDate, formatDuration, formatNumber } from '../lib/format';
 
@@ -37,6 +38,10 @@ export default function StudentExplorePage({ token, onOpenTeachers }) {
   const [courseDetail, setCourseDetail] = useState(null);
   const [courseLoading, setCourseLoading] = useState(false);
   const [openUnits, setOpenUnits] = useState({});
+  const [payCourse, setPayCourse] = useState(null);
+  const [payForm, setPayForm] = useState({ method: 'InstaPay', amount: '', reference: '', notes: '', receiptUrl: '' });
+  const [payError, setPayError] = useState('');
+  const [payBusy, setPayBusy] = useState(false);
 
   const load = useCallback(async (background = false) => {
     if (background) setRefreshing(true); else setLoading(true);
@@ -134,6 +139,44 @@ export default function StudentExplorePage({ token, onOpenTeachers }) {
       setError(err.message);
     } finally {
       setBusyId('');
+    }
+  }
+
+  function openCoursePayment(course) {
+    setPayCourse(course);
+    setPayForm({
+      method: 'InstaPay',
+      amount: course?.price ? String(course.price) : '',
+      reference: '', notes: '', receiptUrl: '',
+    });
+    setPayError('');
+  }
+
+  async function submitCoursePayment() {
+    setPayError('');
+    if (!payCourse) return;
+    if (!(Number(payForm.amount) > 0)) return setPayError('اكتب المبلغ الذي دفعته.');
+    if (payForm.method !== 'Cash' && !payForm.receiptUrl) return setPayError('أرفق صورة سكرين التحويل أو الإيصال.');
+    setPayBusy(true);
+    try {
+      await request('/api/teaching/my/course-requests', {
+        token, method: 'POST',
+        body: JSON.stringify({
+          courseId: payCourse.id,
+          amount: Number(payForm.amount),
+          method: payForm.method,
+          reference: payForm.reference || null,
+          notes: payForm.notes || null,
+          receiptUrl: payForm.receiptUrl || null,
+        }),
+      });
+      setCourses((rows) => rows.map((row) => row.id === payCourse.id ? { ...row, hasPendingRequest: true } : row));
+      flash('تم إرسال طلب الاشتراك مع صورة التحويل. سيصلك إشعار عند تأكيد المدرس.');
+      setPayCourse(null);
+    } catch (err) {
+      setPayError(err.message);
+    } finally {
+      setPayBusy(false);
     }
   }
 
@@ -309,6 +352,7 @@ export default function StudentExplorePage({ token, onOpenTeachers }) {
                     <div className="absolute inset-x-3 top-3 flex items-start justify-between gap-2">
                       <div className="flex flex-wrap gap-1">
                         {enrolled ? <Badge tone="success"><CheckCircle2 size={11} /> مشترك</Badge> : null}
+                        {!enrolled && course.hasPendingRequest ? <Badge tone="warning">بانتظار تأكيد الدفع</Badge> : null}
                         {course.isFree ? <Badge tone="emerald">مجاني</Badge> : null}
                       </div>
                       {!course.isFree ? (
@@ -344,8 +388,10 @@ export default function StudentExplorePage({ token, onOpenTeachers }) {
                       <span className="flex flex-1 items-center justify-center text-[11px] font-bold text-emerald">في «كورساتي»</span>
                     ) : course.isFree ? (
                       <Button size="sm" className="flex-1" icon={CheckCircle2} loading={busyId === course.id} onClick={() => joinCourse(course)}>ابدأ مجانًا</Button>
+                    ) : course.hasPendingRequest ? (
+                      <span className="flex flex-1 items-center justify-center text-[10.5px] font-bold text-warning">طلبك قيد مراجعة المدرس</span>
                     ) : (
-                      <span className="flex flex-1 items-center justify-center text-[10px] font-bold text-subtle">اشترك عبر معلمك</span>
+                      <Button size="sm" className="flex-1" icon={Wallet} onClick={() => openCoursePayment(course)}>اشترك وارفع التحويل</Button>
                     )}
                   </div>
                 </Card>
@@ -369,7 +415,11 @@ export default function StudentExplorePage({ token, onOpenTeachers }) {
           ) : (
             <>
               <Button variant="ghost" onClick={() => setCourseId(null)}>إغلاق</Button>
-              <span className="flex items-center gap-1.5 text-[11px] font-bold text-muted"><Wallet size={13} /> تواصل مع معلمك لإتمام الاشتراك بعد السداد.</span>
+              {detailItem?.hasPendingRequest ? (
+                <span className="flex items-center gap-1.5 text-[11px] font-bold text-warning"><Wallet size={13} /> طلب اشتراكك قيد مراجعة المدرس.</span>
+              ) : (
+                <Button icon={Wallet} onClick={() => { openCoursePayment(detailItem); setCourseId(null); }}>اشترك وارفع التحويل</Button>
+              )}
             </>
           )}>
           {courseLoading || !courseDetail ? (
@@ -461,6 +511,47 @@ export default function StudentExplorePage({ token, onOpenTeachers }) {
               </div>
             </div>
           )}
+        </Modal>
+      ) : null}
+
+      {payCourse ? (
+        <Modal open onClose={() => setPayCourse(null)} icon={Wallet} title={`اشتراك في «${payCourse.title}»`}
+          description="حوّل قيمة الكورس على إنستا باي أو فودافون كاش أو البنك، ثم ارفع صورة التحويل وسيؤكدها المدرس."
+          footer={<>
+            <Button variant="ghost" onClick={() => setPayCourse(null)}>إلغاء</Button>
+            <Button icon={Wallet} loading={payBusy} onClick={submitCoursePayment}>إرسال الطلب</Button>
+          </>}>
+          <div className="grid gap-4">
+            {payError ? <Alert tone="danger">{payError}</Alert> : null}
+            <div className="rounded-xl border border-line bg-surface-soft p-3">
+              <p className="text-[11px] text-muted">قيمة الكورس</p>
+              <p className="mt-0.5 text-[17px] font-extrabold text-primary">{formatNumber(payCourse.price)} ج.م</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="المبلغ المحوّل (ج.م)">
+                <Input type="number" min="0" value={payForm.amount} onChange={(e) => setPayForm((p) => ({ ...p, amount: e.target.value }))} />
+              </Field>
+              <Field label="طريقة الدفع">
+                <Select value={payForm.method} onChange={(e) => setPayForm((p) => ({ ...p, method: e.target.value }))}>
+                  <option value="InstaPay">إنستا باي</option>
+                  <option value="VodafoneCash">فودافون كاش</option>
+                  <option value="BankTransfer">تحويل بنكي</option>
+                  <option value="Online">أونلاين</option>
+                  <option value="Cash">نقدي</option>
+                </Select>
+              </Field>
+            </div>
+            <Field label="المرجع / رقم العملية (اختياري)">
+              <Input value={payForm.reference} onChange={(e) => setPayForm((p) => ({ ...p, reference: e.target.value }))} />
+            </Field>
+            <ImageUploader token={token} value={payForm.receiptUrl}
+              onChange={(url) => setPayForm((p) => ({ ...p, receiptUrl: url }))}
+              label={payForm.method === 'Cash' ? 'صورة الإيصال (اختياري)' : 'صورة التحويل (مطلوبة)'}
+              hint={payForm.method === 'Cash' ? 'اختياري للدفع النقدي.' : 'ارفع لقطة شاشة التحويل ليتمكن المدرس من مراجعتها.'} />
+            <Field label="ملاحظات (اختياري)">
+              <Textarea value={payForm.notes} onChange={(e) => setPayForm((p) => ({ ...p, notes: e.target.value }))} className="min-h-16" />
+            </Field>
+          </div>
         </Modal>
       ) : null}
     </div>

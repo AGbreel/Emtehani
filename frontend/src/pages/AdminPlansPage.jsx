@@ -170,6 +170,16 @@ export default function AdminPlansPage({ token }) {
     } catch (err) { setError(err.message); } finally { setBusy(''); }
   }
 
+  async function resetSubscription(item) {
+    if (!window.confirm(`إعادة ضبط باقة ${item.teacherName || 'المدرس'} إلى الباقة المجانية بمدتها الحالية في الإعدادات؟`)) return;
+    setBusy(item.id);
+    try {
+      await request(`/api/admin/subscriptions/${item.id}/reset`, { token, method: 'POST', body: '{}' });
+      flash('تمت إعادة الباقة المجانية حسب مدتها الحالية.');
+      await load(true);
+    } catch (err) { flash(err.message); } finally { setBusy(''); }
+  }
+
   async function reviewPayment(item, action) {
     setNote('');
     setModalError('');
@@ -295,6 +305,7 @@ export default function AdminPlansPage({ token }) {
                       <td className="px-4 py-2.5">
                         <div className="flex flex-wrap items-center gap-1">
                           <Button size="xs" variant="soft" icon={BadgeCheck} loading={busy === item.id} onClick={() => activate(item)}>تفعيل</Button>
+                          <Button size="xs" variant="ghost" loading={busy === item.id} onClick={() => resetSubscription(item)}>إعادة الباقة المجانية</Button>
                           {item.status === 'Confirmed' ? <IconButton label="إيقاف" tone="danger" onClick={() => stopSubscription(item, 'suspend')}><Ban size={14} /></IconButton> : null}
                           {item.status !== 'Cancelled' ? <IconButton label="إلغاء" tone="danger" onClick={() => stopSubscription(item, 'cancel')}><XCircle size={14} /></IconButton> : null}
                         </div>

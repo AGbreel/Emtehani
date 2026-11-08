@@ -29,11 +29,14 @@ import {
   StatusChip,
   cn,
 } from '../components/ui';
+import SubscriptionCountdown from '../components/SubscriptionCountdown';
 import { request } from '../lib/api';
 import { formatDate, formatDuration, formatNumber, greeting } from '../lib/format';
 
 export default function TeacherDashboard({ token, user, onNavigate, onCreate, onOpenExam }) {
   const [data, setData] = useState(null);
+  const [subscription, setSubscription] = useState(null);
+  const [subscriptionServerUtc, setSubscriptionServerUtc] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -53,6 +56,15 @@ export default function TeacherDashboard({ token, user, onNavigate, onCreate, on
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let alive = true;
+    request('/api/teacher/subscription', { token }).then((result) => {
+      if (!alive) return;
+      setSubscription(result?.subscription || null);
+      setSubscriptionServerUtc(result?.serverUtc || null);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [token]);
   useEffect(() => {
     const id = window.setInterval(() => load(true), 15000);
     return () => window.clearInterval(id);
@@ -83,6 +95,14 @@ export default function TeacherDashboard({ token, user, onNavigate, onCreate, on
             <Button size="xs" icon={CreditCard} onClick={() => onNavigate?.('subscription')}>اختيار الباقة</Button>
           </div>
         </Alert>
+      ) : null}
+      {subscription?.endsAtUtc ? (
+        <SubscriptionCountdown
+          className="mb-5"
+          subscription={subscription}
+          serverUtc={subscriptionServerUtc}
+          onRenew={() => onNavigate?.('subscription')}
+        />
       ) : null}
 
       <div className="ui-stagger grid grid-cols-2 gap-3 lg:grid-cols-4">
